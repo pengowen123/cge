@@ -19,4 +19,4 @@ And this to your crate root:
 extern crate cge;
 ```
 
-See the [documentation](pengowen123.github.io/cge/cge/index.html) for complete instructions.
+See the [documentation](http://pengowen123.github.io/cge/cge/index.html) for complete instructions.
