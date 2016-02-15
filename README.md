@@ -15,8 +15,8 @@ cge = { git = "https://github.com/pengowen123/cge" }
 
 And this to your crate root:
 
-```
+```rust
 extern crate cge;
 ```
 
-See the documentation [here](pengowen123.github.io/cge/cge/index.html) for complete instructions.
+See the [documentation](http://pengowen123.github.io/cge/cge/index.html) for complete instructions.
