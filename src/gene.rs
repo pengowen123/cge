@@ -1,5 +1,9 @@
 /// An enum for storing additional information for different types of genes
+<<<<<<< HEAD
 #[derive(Clone, Debug, PartialEq)]
+=======
+#[derive(Clone, Debug)]
+>>>>>>> 9f469de66585ebab2be137a99e708cbbbeb27db3
 pub enum GeneExtras {
     /// Input contains a current value
     Input(f64),
@@ -10,7 +14,11 @@ pub enum GeneExtras {
     Bias
 }
 
+<<<<<<< HEAD
 #[derive(Clone, Debug, PartialEq)]
+=======
+#[derive(Clone, Debug)]
+>>>>>>> 9f469de66585ebab2be137a99e708cbbbeb27db3
 pub struct Gene {
     pub weight: f64,
     pub id: usize,

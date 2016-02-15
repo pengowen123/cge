@@ -10,7 +10,11 @@ use gene::GeneExtras::*;
 
 const BIAS_GENE_VALUE: f64 = 1.0;
 
+<<<<<<< HEAD
 #[derive(Clone, Debug, PartialEq)]
+=======
+#[derive(Clone, Debug)]
+>>>>>>> 9f469de66585ebab2be137a99e708cbbbeb27db3
 pub struct Network {
     // size should be the length of the genome minus one, don't forget
     pub size: usize,
@@ -29,6 +33,7 @@ impl Network {
     ///
     /// # Examples
     ///
+<<<<<<< HEAD
     /// ```no_run
     /// use cge::Network;
     ///
@@ -43,10 +48,24 @@ impl Network {
     ///
     /// // Get the output of the neural network with too many inputs (extras aren't used)
     /// let result = network.evaluate(&vec![1.0, 1.0, 1.0]);
+=======
+    /// ```
+    /// use cge::Network;
+    ///
+    /// // Get the output of the neural network the the specified inputs
+    /// let result = network.evaluate(vec![1.0, 1.0]);
+    ///
+    /// // Get the output of the neural network with no inputs
+    /// let result = network.evaluate(Vec::new());
+    ///
+    /// // Get the output of the neural network with too many inputs (extras aren't used)
+    /// let result = network.evaluate(vec![1.0, 1.0, 1.0]);
+>>>>>>> 9f469de66585ebab2be137a99e708cbbbeb27db3
     ///
     /// 
     /// // Let's say adder.ann is a file with a neural network with recurrent connections, used for
     /// // adding numbers together.
+<<<<<<< HEAD
     /// let mut adder = Network::load_from_file("adder.ann").unwrap();
     ///
     /// // result_one will be 1.0
@@ -60,11 +79,30 @@ impl Network {
     ///
     /// // If this behavior is not desired, call the clear_state method between evaluations:
     /// let result_one = adder.evaluate(&vec![1.0]);
+=======
+    /// let mut adder = Network::load_from_file("adder.ann");
+    ///
+    /// // result_one will be 1.0
+    /// let result_one = adder.evaluate(vec![1.0]);
+    ///
+    /// // result_two will be 3.0
+    /// let result_two = adder.evaluate(vec![2.0]);
+    ///
+    /// // result_three will be 5.0
+    /// let result_three = adder.evaluate(vec![2.0]);
+    ///
+    /// // If this behavior is not desired, call the clear_state method between evaluations:
+    /// let result_one = adder.evaluate(vec![1.0]);
+>>>>>>> 9f469de66585ebab2be137a99e708cbbbeb27db3
     /// 
     /// adder.clear_state();
     ///
     /// // The 1.0 from the previous call is gone, so result_two will be 2.0
+<<<<<<< HEAD
     /// let result_two = adder.evaluate(&vec![2.0]);
+=======
+    /// let result_two = adder.evaluate(vec![2.0]);
+>>>>>>> 9f469de66585ebab2be137a99e708cbbbeb27db3
     /// ```
     pub fn evaluate(&mut self, inputs: &Vec<f64>) -> Vec<f64> {
         // Set inputs
@@ -100,6 +138,7 @@ impl Network {
     ///
     /// # Examples
     ///
+<<<<<<< HEAD
     /// ```no_run
     /// use cge::Network;
     ///
@@ -109,6 +148,9 @@ impl Network {
     ///     genome: Vec::new()
     /// };
     ///
+=======
+    /// ```
+>>>>>>> 9f469de66585ebab2be137a99e708cbbbeb27db3
     /// // Save network to neural_network.ann
     /// network.save_to_file("neural_network.ann");
     /// ```
@@ -122,7 +164,11 @@ impl Network {
     /// 
     /// # Examples
     ///
+<<<<<<< HEAD
     /// ```no_run
+=======
+    /// ```
+>>>>>>> 9f469de66585ebab2be137a99e708cbbbeb27db3
     /// use cge::Network;
     ///
     /// // Loads a network from the file neural_network.ann
