@@ -1,0 +1,6 @@
+[package]
+name = "cge"
+version = "0.1.0"
+authors = ["pengowen123 <pengowen816@gmail.com>"]
+
+[dependencies]
