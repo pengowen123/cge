@@ -212,9 +212,9 @@ impl Network {
         stack.data
     }
 
-    // Returns the start and end index of the subnetwork starting at the neuron with the given id,
-    // or None if it does not exist
-    fn get_subnetwork_index(&self, id: usize) -> Option<Range<usize>> {
+    /// Returns the start and end index of the subnetwork starting at the neuron with the given id,
+    /// or None if it does not exist.
+    pub fn get_subnetwork_index(&self, id: usize) -> Option<Range<usize>> {
         let start = match self.get_neuron_index(id) {
             Some(i) => i,
             None => return None
