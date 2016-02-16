@@ -1,4 +1,4 @@
-//! The neural network struct. See the module level documentation for usage.
+//! The neural network struct.
 
 use std::ops::Range;
 use std::io;
