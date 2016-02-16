@@ -252,8 +252,8 @@ impl Network {
         }
     }
 
-    // Returns the index of the neuron with the given id, or None if it does not exist
-    fn get_neuron_index(&self, id: usize) -> Option<usize> {
+    /// Returns the index of the neuron with the given id, or None if it does not exist.
+    pub fn get_neuron_index(&self, id: usize) -> Option<usize> {
         let mut result = None;
 
         for (i, gene) in self.genome.iter().enumerate() {
