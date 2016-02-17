@@ -58,6 +58,7 @@ impl Gene {
         }
     }
 
+    #[doc(hidden)]
     pub fn ref_input(&self) -> Option<(f64, usize, f64)> {
         if let GeneExtras::Input(ref weight) = self.variant {
             Some((self.weight, self.id, *weight))
@@ -66,6 +67,7 @@ impl Gene {
         }
     }
 
+    #[doc(hidden)]
     pub fn ref_neuron(&self) -> Option<(f64, usize, f64, usize)> {
         if let GeneExtras::Neuron(ref value, ref inputs) = self.variant {
             Some((self.weight, self.id, *value, *inputs))
@@ -74,6 +76,7 @@ impl Gene {
         }
     }
 
+    #[doc(hidden)]
     pub fn ref_mut_neuron<'a>(&'a mut self) -> Option<(&'a mut f64, &'a mut usize, &'a mut f64, &'a mut usize)> {
         if let GeneExtras::Neuron(ref mut value, ref mut inputs) = self.variant {
             Some((&mut self.weight, &mut self.id, value, inputs))

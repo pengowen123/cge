@@ -19,6 +19,7 @@
 // If values are too small/large, it shouldn't cause any problems. Operations on non-normal numbers
 // result in non-normal numbers, never panicking.
 
+// TODO: Implement Debug for Network (make a pretty tree of lines)
 // In the future, create a program for visualizing a neural network
 
 mod utils;
