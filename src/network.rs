@@ -179,7 +179,6 @@ impl Network {
                     let id = self.genome[gene_index].id;
                     let subnetwork_range = self.get_subnetwork_index(id).unwrap();
 
-                    println!("{:?}", depth);
                     let result = self.evaluate_slice(subnetwork_range, false, depth + 1);
                     // println!("{:?}", result);
                     stack.push(weight * result[0]);
