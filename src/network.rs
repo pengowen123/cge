@@ -77,7 +77,7 @@ impl Network {
         }
 
         let size = self.size;
-        self.evaluate_slice(0..size, true)
+        self.evaluate_slice(0..size, true, 0)
     }
 
     /// Clears the internal state of the neural network.
@@ -132,7 +132,7 @@ impl Network {
     }
 
     // Returns the output of sub-linear genome in the given range
-    fn evaluate_slice(&mut self, range: Range<usize>, neuron_update: bool) -> Vec<f64> {
+    fn evaluate_slice(&mut self, range: Range<usize>, neuron_update: bool, depth: usize) -> Vec<f64> {
         let mut gene_index = range.end;
         // Initialize a stack for evaluating the neural network
         let mut stack = Stack::new();
@@ -179,7 +179,8 @@ impl Network {
                     let id = self.genome[gene_index].id;
                     let subnetwork_range = self.get_subnetwork_index(id).unwrap();
 
-                    let result = self.evaluate_slice(subnetwork_range, false);
+                    println!("{:?}", depth);
+                    let result = self.evaluate_slice(subnetwork_range, false, depth + 1);
                     // println!("{:?}", result);
                     stack.push(weight * result[0]);
                 },
