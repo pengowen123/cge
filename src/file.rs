@@ -74,24 +74,7 @@ pub fn from_str(string: &str) -> Option<Network> {
     })
 }
 
-pub fn read_network(path: &str) -> io::Result<Network> {
-    let path = Path::new(path);
-    let mut file = try!(File::open(path));
-    let mut data = String::new();
-
-    try!(file.read_to_string(&mut data));
-
-    let network = from_str(&data);
-
-    match network {
-        Some(n) => Ok(n),
-        None => Err(Error::new(ErrorKind::InvalidData, "Invalid neural network file format"))
-    }
-}
-
-pub fn write_network(network: &Network, path: &str) -> io::Result<()> {
-    let path = Path::new(path);
-    let mut file = try!(File::create(path));
+pub fn to_str(network: &Network) -> String {
     let mut data = String::new();
 
     for gene in &network.genome {
@@ -115,5 +98,28 @@ pub fn write_network(network: &Network, path: &str) -> io::Result<()> {
     }
 
     data.pop();
+    data
+}
+
+pub fn read_network(path: &str) -> io::Result<Network> {
+    let path = Path::new(path);
+    let mut file = try!(File::open(path));
+    let mut data = String::new();
+
+    try!(file.read_to_string(&mut data));
+
+    let network = from_str(&data);
+
+    match network {
+        Some(n) => Ok(n),
+        None => Err(Error::new(ErrorKind::InvalidData, "Invalid neural network file format"))
+    }
+}
+
+pub fn write_network(network: &Network, path: &str) -> io::Result<()> {
+    let path = Path::new(path);
+    let mut file = try!(File::create(path));
+    let data = to_str(network);
+    
     file.write_all(data.as_bytes())
 }

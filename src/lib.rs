@@ -1,5 +1,6 @@
 //! An implementation of the CGE neural network encoding. The Network struct has methods for
-//! evaluating a neural network, resetting its state, and saving to and loading from files.
+//! evaluating a neural network, resetting its state, and saving to and loading from files and
+//! strings.
 //!
 //! # Examples
 //!
@@ -19,8 +20,8 @@
 // If values are too small/large, it shouldn't cause any problems. Operations on non-normal numbers
 // result in non-normal numbers, never panicking.
 
-// TODO: Implement Debug for Network (make a pretty tree of lines)
-// In the future, create a program for visualizing a neural network
+// TODO: Implement a display for Network (make a pretty tree of lines)
+// In the future, create a program for visualizing a neural network (generate an image or html)
 
 mod utils;
 mod file;

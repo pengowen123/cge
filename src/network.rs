@@ -95,7 +95,8 @@ impl Network {
         }
     }
 
-    /// Loads a neural network from a string. See `load_from_file` for format details.
+    /// Loads a neural network from a string. Returns None if the format is incorrect. See
+    /// `load_from_file` for format details.
     ///
     /// # Examples
     ///
@@ -104,13 +105,32 @@ impl Network {
     ///
     /// // Store the neural network in a string
     /// let string = "n 1 0 2,n 1 1 2,n 1 3 2,
-    ///               i 1 0,i 1 1,i 1 1,n 0.5 2 4,
+    ///               i 1 0,i 1 1,i 1 1,n 1 2 4,
     ///               f 1 3,i 1 0,i 1 1,r 1 0";
     ///
     /// // Load a neural network from the string
-    /// let network = Network::from_str(string);
+    /// let network = Network::from_str(string).unwrap();
     pub fn from_str(string: &str) -> Option<Network> {
         file::from_str(string)
+    }
+
+    /// Saves the neural network to a string. Allows embedding a neural network in source code.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cge::Network;
+    ///
+    /// // Create a neural network
+    /// let network = Network {
+    ///     size: 0,
+    ///     genome: Vec::new()
+    /// };
+    ///
+    /// // Save the neural network to the string
+    /// let string = network.to_str();
+    pub fn to_str(&self) -> String {
+        file::to_str(self)
     }
 
     /// Saves the neural network to a file. Returns an empty tuple on success, or an io error.
@@ -126,8 +146,8 @@ impl Network {
     ///     genome: Vec::new()
     /// };
     ///
-    /// // Save network to neural_network.ann
-    /// network.save_to_file("neural_network.ann");
+    /// // Save the neural network to neural_network.ann
+    /// network.save_to_file("neural_network.ann").unwrap();
     /// ```
     pub fn save_to_file(&self, path: &str) -> io::Result<()> {
         file::write_network(self, path)
