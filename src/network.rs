@@ -95,6 +95,24 @@ impl Network {
         }
     }
 
+    /// Loads a neural network from a string. See `load_from_file` for format details.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use cge::Network;
+    ///
+    /// // Store the neural network in a string
+    /// let string = "n 1 0 2,n 1 1 2,n 1 3 2,
+    ///               i 1 0,i 1 1,i 1 1,n 0.5 2 4,
+    ///               f 1 3,i 1 0,i 1 1,r 1 0";
+    ///
+    /// // Load a neural network from the string
+    /// let network = Network::from_str(string);
+    pub fn from_str(string: &str) -> Option<Network> {
+        file::from_str(string)
+    }
+
     /// Saves the neural network to a file. Returns an empty tuple on success, or an io error.
     ///
     /// # Examples
@@ -117,14 +135,14 @@ impl Network {
 
     /// Loads a neural network from a file. No guarantees are made about the validity of the
     /// genome. Returns the network, or an io error. If the file is in a bad format,
-    /// io::ErrorKind::InvalidData is returned.
+    /// `std::io::ErrorKind::InvalidData` is returned.
     /// 
     /// # Examples
     ///
     /// ```no_run
     /// use cge::Network;
     ///
-    /// // Loads a network from the file neural_network.ann
+    /// // Loads a neural network from the file neural_network.ann
     /// let mut network = Network::load_from_file("neural_network.ann").unwrap();
     /// ```
     pub fn load_from_file(path: &str) -> io::Result<Network> {

@@ -6,27 +6,21 @@ use std::io;
 use Network;
 use gene::*;
 
-pub fn read_network(path: &str) -> io::Result<Network> {
-    let path = Path::new(path);
-    let mut file = try!(File::open(path));
-    let mut data = String::new();
-
-    try!(file.read_to_string(&mut data));
-
-    let genes = data.split(",");
+pub fn from_str(string: &str) -> Option<Network> {
+    let genes = string.split(",");
     let mut genome = Vec::new();
 
     for gene in genes {
         let gene = gene.split_whitespace().collect::<Vec<&str>>();
 
         if gene.is_empty() {
-            return Err(Error::new(ErrorKind::InvalidData, "Invalid neural network file format"));
+            return None;
         }
 
         match gene[0] { 
             "n" => {
                 if gene.len() != 4 {
-                    return Err(Error::new(ErrorKind::InvalidData, "Invalid neural network file format"));
+                    return None;
                 }
 
                 genome.push(Gene::neuron(gene[1].parse::<f64>().unwrap(),
@@ -35,7 +29,7 @@ pub fn read_network(path: &str) -> io::Result<Network> {
             },
             "i" => {
                 if gene.len() != 3 {
-                    return Err(Error::new(ErrorKind::InvalidData, "Invalid neural network file format"));
+                    return None;
                 }
 
                 genome.push(Gene::input(gene[1].parse::<f64>().unwrap(),
@@ -43,7 +37,7 @@ pub fn read_network(path: &str) -> io::Result<Network> {
             },
             "f" => {
                 if gene.len() != 3 {
-                    return Err(Error::new(ErrorKind::InvalidData, "Invalid neural network file format"));
+                    return None;
                 }
 
                 genome.push(Gene::forward(gene[1].parse::<f64>().unwrap(),
@@ -51,7 +45,7 @@ pub fn read_network(path: &str) -> io::Result<Network> {
             },
             "r" => {
                 if gene.len() != 3 {
-                    return Err(Error::new(ErrorKind::InvalidData, "Invalid neural network file format"));
+                    return None;
                 }
 
                 genome.push(Gene::recurrent(gene[1].parse::<f64>().unwrap(),
@@ -59,25 +53,40 @@ pub fn read_network(path: &str) -> io::Result<Network> {
             },
             "b" => {
                 if gene.len() != 2 {
-                    return Err(Error::new(ErrorKind::InvalidData, "Invalid neural network file format"));
-                }
-
+                    return None;
+                }   
+                
                 genome.push(Gene::bias(gene[1].parse::<f64>().unwrap()));
-            }
+            },
             _ => {
-                return Err(Error::new(ErrorKind::InvalidData, "Invalid neural network file format"));
+                return None;
             }
         }
     }
 
     if genome.is_empty() {
-        return Err(Error::new(ErrorKind::InvalidData, "Invalid neural network file format"));
+        return None;
     }
 
-    Ok(Network {
+    Some(Network {
         size: genome.len() - 1,
         genome: genome
     })
+}
+
+pub fn read_network(path: &str) -> io::Result<Network> {
+    let path = Path::new(path);
+    let mut file = try!(File::open(path));
+    let mut data = String::new();
+
+    try!(file.read_to_string(&mut data));
+
+    let network = from_str(&data);
+
+    match network {
+        Some(n) => Ok(n),
+        None => Err(Error::new(ErrorKind::InvalidData, "Invalid neural network file format"))
+    }
 }
 
 pub fn write_network(network: &Network, path: &str) -> io::Result<()> {
