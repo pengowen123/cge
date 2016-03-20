@@ -66,18 +66,18 @@ impl Network {
     /// let result_two = adder.evaluate(&[2.0]);
     /// ```
     pub fn evaluate(&mut self, inputs: &[f64]) -> Vec<f64> {
-        // Set inputs
-        for gene in &mut self.genome {
-            if let Input(ref mut current_value) = gene.variant {
-                *current_value = match inputs.get(gene.id) {
-                    Some(v) => *v,
-                    None => 0.0
-                }
-            }
-        }
+        self.set_inputs(inputs);
 
         let size = self.size;
-        self.evaluate_slice(0..size, true, 0)
+        self.evaluate_slice(0..size, true, false)
+    }
+
+    /// Evaluates the neural network the same as `evaluate`, but prints debug info.
+    pub fn debug_eval(&mut self, inputs: &[f64]) -> Vec<f64> {
+        self.set_inputs(inputs);
+
+        let size = self.size;
+        self.evaluate_slice(0..size, true, true)
     }
 
     /// Clears the internal state of the neural network.
@@ -170,7 +170,7 @@ impl Network {
     }
 
     // Returns the output of sub-linear genome in the given range
-    fn evaluate_slice(&mut self, range: Range<usize>, neuron_update: bool, depth: usize) -> Vec<f64> {
+    fn evaluate_slice(&mut self, range: Range<usize>, neuron_update: bool, debug: bool) -> Vec<f64> {
         let mut gene_index = range.end;
         // Initialize a stack for evaluating the neural network
         let mut stack = Stack::new();
@@ -179,9 +179,9 @@ impl Network {
         while gene_index >= range.start {
             let variant = self.genome[gene_index].variant.clone();
 
-            // For debugging: uncomment these print statements
-            // Perhaps add it as an option to help users
-            // println!("{:?}", variant);
+            if debug {
+                println!("{:?}", variant);
+            }
 
             match variant {
                 Input(_) => {
@@ -221,8 +221,12 @@ impl Network {
                     let subnetwork_range = self.get_subnetwork_index(id)
                                                .expect("Found forward connection with invalid neuron id");
 
-                    let result = self.evaluate_slice(subnetwork_range, false, depth + 1);
-                    // println!("{:?}", result);
+                    let result = self.evaluate_slice(subnetwork_range, false, debug);
+
+                    if debug {
+                        println!("{:?}", result);
+                    }
+
                     stack.push(weight * result[0]);
                 },
                 Recurrent => {
@@ -249,10 +253,26 @@ impl Network {
             }
 
             gene_index -= 1;
-            // println!("{:?}", stack.data);
+
+            if debug {
+                println!("{:?}", stack.data);
+            }
         }
 
         stack.data
+    }
+
+    fn set_inputs(&mut self, inputs: &[f64]) {
+        for gene in &mut self.genome {
+            if let Input(ref mut current_value) = gene.variant {
+                *current_value = 0.0;
+
+                *current_value = match inputs.get(gene.id) {
+                    Some(v) => *v,
+                    None => 0.0
+                }
+            }
+        }
     }
 
     /// Returns the start and end index of the subnetwork starting at the neuron with the given id,

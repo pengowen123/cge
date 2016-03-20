@@ -92,7 +92,7 @@ pub fn to_str(network: &Network) -> String {
                 data.push_str(&format!("r {} {},", gene.weight, gene.id));
             },
             GeneExtras::Bias => {
-                data.push_str(&format!("b {}", gene.weight));
+                data.push_str(&format!("b {},", gene.weight));
             }
         }
     }
