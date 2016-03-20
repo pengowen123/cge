@@ -288,7 +288,7 @@ impl Network {
 
         // Iterate through genes after the start index, modifying the sum each step 
         // I could use an iterator here, but it would be messy
-        for gene in &self.genome[start..self.size] {
+        for gene in &self.genome[start..self.size + 1] {
             match gene.variant {
                 Neuron(_, ref inputs) => {
                     sum += 1 - *inputs as i32;

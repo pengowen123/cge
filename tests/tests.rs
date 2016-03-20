@@ -7,11 +7,11 @@ use cge::Network;
 use cge::gene::Gene;
 use cge::gene::GeneExtras::*;
 
-const TEST_GENOME: [Gene; 11] = [
+const TEST_GENOME: [Gene; 12] = [
     Gene {
         weight: 1.0,
         id: 0,
-        variant: Neuron(0.0, 2)
+        variant: Neuron(0.0, 3)
     },
     Gene {
         weight: 1.0,
@@ -63,6 +63,11 @@ const TEST_GENOME: [Gene; 11] = [
         id: 0,
         variant: Recurrent
     },
+    Gene {
+        weight: 1.0,
+        id: 0,
+        variant: Bias
+    }
 ];
 
 fn equal(a: Vec<Gene>, b: Vec<Gene>) -> bool {
@@ -82,36 +87,40 @@ fn equal(a: Vec<Gene>, b: Vec<Gene>) -> bool {
  
 #[test]
 fn test_read_file() {
-    let network = Network::load_from_file("foo.txt").unwrap();
+    let network = Network::load_from_file("tests/foo.txt").unwrap();
     let test_genome = TEST_GENOME.to_vec();
     
-    assert_eq!(network.size, 10);
+    assert_eq!(network.size, 11);
     assert!(equal(test_genome, network.genome));
 }
 
 #[test]
 fn test_write_file() {
-    let network = Network::load_from_file("foo.txt").unwrap();
+    let network = Network::load_from_file("tests/foo.txt").unwrap();
     let test_genome = TEST_GENOME.to_vec();
 
-    network.save_to_file("bar.txt").unwrap();
+    network.save_to_file("tests/bar.txt").unwrap();
 
-    let network = Network::load_from_file("bar.txt").unwrap();
+    let network = Network::load_from_file("tests/bar.txt").unwrap();
 
-    assert_eq!(network.size, 10);
+    assert_eq!(network.size, 11);
     assert!(equal(test_genome, network.genome));
 }
 
 #[test]
 fn test_network_eval() {
     let mut network = Network {
-        size: 10,
+        size: 11,
         genome: TEST_GENOME.to_vec()
     };
 
-    let inputs = vec![1.0, 1.0];
+    let inputs = [1.0, 1.0];
     let result = network.evaluate(&inputs);
+    let result2 = network.evaluate(&[]);
 
     assert_eq!(result.len(), 1);
-    assert_eq!(result[0], 7.0);
+    assert_eq!(result[0], 8.0);
+
+    assert_eq!(result2.len(), 1);
+    assert_eq!(result2[0], 9.0);
 }
