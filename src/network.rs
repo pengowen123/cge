@@ -65,7 +65,7 @@ impl Network {
     /// // The 1.0 from the previous call is gone, so result_two will be 2.0
     /// let result_two = adder.evaluate(&vec![2.0]);
     /// ```
-    pub fn evaluate(&mut self, inputs: &Vec<f64>) -> Vec<f64> {
+    pub fn evaluate(&mut self, inputs: &[f64]) -> Vec<f64> {
         // Set inputs
         for gene in &mut self.genome {
             if let Input(ref mut current_value) = gene.variant {
