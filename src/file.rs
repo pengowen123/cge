@@ -5,8 +5,28 @@ use std::io;
 
 use Network;
 use gene::*;
+use transfer::*;
 
 pub fn from_str(string: &str) -> Option<Network> {
+    let parts = string.split(":").collect::<Vec<_>>();
+
+    if parts.len() != 2 {
+        return None;
+    }
+
+    let function = if let Ok(v) = parts[0].parse() {
+        match v {
+            0 => TransferFunction::Linear,
+            1 => TransferFunction::Sign,
+            2 => TransferFunction::Sigmoid,
+            _ => return None
+        }
+    } else {
+        return None;
+    };
+
+    let string = parts[1];
+
     let genes = string.split(",");
     let mut genome = Vec::new();
 
@@ -70,12 +90,13 @@ pub fn from_str(string: &str) -> Option<Network> {
 
     Some(Network {
         size: genome.len() - 1,
-        genome: genome
+        genome: genome,
+        function: function
     })
 }
 
 pub fn to_str(network: &Network) -> String {
-    let mut data = String::new();
+    let mut data = format!("{}: ", network.function.clone() as i32);
 
     for gene in &network.genome {
         match gene.variant {

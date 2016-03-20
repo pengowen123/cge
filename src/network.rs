@@ -7,6 +7,7 @@ use utils::Stack;
 use file;
 use gene::*;
 use gene::GeneExtras::*;
+use transfer::*;
 
 const BIAS_GENE_VALUE: f64 = 1.0;
 
@@ -14,7 +15,8 @@ const BIAS_GENE_VALUE: f64 = 1.0;
 pub struct Network {
     // size should be the length of the genome minus one, don't forget
     pub size: usize,
-    pub genome: Vec<Gene>
+    pub genome: Vec<Gene>,
+    pub function: TransferFunction
 }
 
 impl Network {
@@ -95,21 +97,38 @@ impl Network {
         }
     }
 
-    /// Loads a neural network from a string. Returns None if the format is incorrect. See
-    /// `load_from_file` for format details.
+    /// Loads a neural network from a string. Returns `None` if the format is incorrect.
     ///
     /// # Examples
     ///
-    /// ```no_run
+    /// ```
     /// use cge::Network;
     ///
     /// // Store the neural network in a string
-    /// let string = "n 1 0 2,n 1 1 2,n 1 3 2,
+    /// let string = "0: n 1 0 2,n 1 1 2,n 1 3 2,
     ///               i 1 0,i 1 1,i 1 1,n 1 2 4,
     ///               f 1 3,i 1 0,i 1 1,r 1 0";
     ///
     /// // Load a neural network from the string
     /// let network = Network::from_str(string).unwrap();
+    /// ```
+    ///
+    /// # Format
+    ///
+    /// The format for the string is simple enough to build by hand:
+    /// 
+    /// First, the number 0, 1 or 2 is entered to represent the linear, sign, or sigmoid
+    /// function, followed by a colon. The rest is the genome, encoded with comma separated genes:
+    ///
+    /// Neuron:     n <weight> <id> <input count>
+    /// Input:      i <weight> <id>
+    /// Connection: f <weight> <id>
+    /// Recurrent:  r <weight> <id>
+    /// Bias:       b <weight>
+    ///
+    /// For more information about what this means, see [here][1].
+    ///
+    /// [1]: http://www.academia.edu/6923193/A_common_genetic_encoding_for_both_direct_and_indirect_encodings_of_networks
     pub fn from_str(string: &str) -> Option<Network> {
         file::from_str(string)
     }
@@ -119,16 +138,18 @@ impl Network {
     /// # Examples
     ///
     /// ```
-    /// use cge::Network;
+    /// use cge::*;
     ///
     /// // Create a neural network
     /// let network = Network {
     ///     size: 0,
-    ///     genome: Vec::new()
+    ///     genome: Vec::new(),
+    ///     function: TransferFunction::Sign
     /// };
     ///
     /// // Save the neural network to the string
     /// let string = network.to_str();
+    /// ```
     pub fn to_str(&self) -> String {
         file::to_str(self)
     }
@@ -138,12 +159,13 @@ impl Network {
     /// # Examples
     ///
     /// ```no_run
-    /// use cge::Network;
+    /// use cge::*;
     ///
     /// // Create a neural network
     /// let network = Network {
     ///     size: 0,
-    ///     genome: Vec::new()
+    ///     genome: Vec::new(),
+    ///     function: TransferFunction::Sign
     /// };
     ///
     /// // Save the neural network to neural_network.ann
@@ -192,13 +214,19 @@ impl Network {
                 },
                 Neuron(_, _) => {
                     // If the gene is a neuron, pop a number (the neurons input count) of inputs
-                    // off the stack, and push their sum multiplied by the neurons weight onto the
-                    // stack
+                    // off the stack, and push the transfer function applied to the sum of these
+                    // inputs multiplied by the neurons weight onto the stack
                     let (weight, _, value, inputs) = self.genome[gene_index].ref_mut_neuron().unwrap();
-                    let new_value = stack.pop(*inputs)
+                    let mut new_value = stack.pop(*inputs)
                                          .expect("A neuron did not receive enough inputs")
                                          .iter()
                                          .fold(0.0, |acc, i| acc + i);
+
+                    new_value = match self.function {
+                        TransferFunction::Linear => new_value,
+                        TransferFunction::Sign => sign(new_value),
+                        TransferFunction::Sigmoid => sigmoid(new_value),
+                    };
 
                     if neuron_update {
                         *value = new_value;

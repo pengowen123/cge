@@ -25,7 +25,9 @@
 
 mod utils;
 mod file;
+pub mod transfer;
 pub mod gene;
 pub mod network;
 
 pub use self::network::Network;
+pub use self::transfer::TransferFunction;

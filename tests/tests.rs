@@ -1,11 +1,9 @@
-// File tests will fail unless the text files are in the right place
-// Copy them to the crate root and the tests should pass
-
 extern crate cge;
 
 use cge::Network;
 use cge::gene::Gene;
 use cge::gene::GeneExtras::*;
+use cge::TransferFunction;
 
 const TEST_GENOME: [Gene; 12] = [
     Gene {
@@ -111,7 +109,8 @@ fn test_write_file() {
 fn test_network_eval() {
     let mut network = Network {
         size: 11,
-        genome: TEST_GENOME.to_vec()
+        genome: TEST_GENOME.to_vec(),
+        function: TransferFunction::Linear
     };
 
     let inputs = [1.0, 1.0];
