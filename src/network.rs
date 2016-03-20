@@ -39,31 +39,31 @@ impl Network {
     /// let result = network.evaluate(&vec![1.0, 1.0]);
     ///
     /// // Get the output of the neural network with no inputs
-    /// let result = network.evaluate(&Vec::new());
+    /// let result = network.evaluate(&[]);
     ///
     /// // Get the output of the neural network with too many inputs (extras aren't used)
-    /// let result = network.evaluate(&vec![1.0, 1.0, 1.0]);
+    /// let result = network.evaluate(&[1.0, 1.0, 1.0]);
     /// 
     /// // Let's say adder.ann is a file with a neural network with recurrent connections, used for
     /// // adding numbers together.
     /// let mut adder = Network::load_from_file("adder.ann").unwrap();
     ///
     /// // result_one will be 1.0
-    /// let result_one = adder.evaluate(&vec![1.0]);
+    /// let result_one = adder.evaluate(&[1.0]);
     ///
     /// // result_two will be 3.0
-    /// let result_two = adder.evaluate(&vec![2.0]);
+    /// let result_two = adder.evaluate(&[2.0]);
     ///
     /// // result_three will be 5.0
-    /// let result_three = adder.evaluate(&vec![2.0]);
+    /// let result_three = adder.evaluate(&[2.0]);
     ///
     /// // If this behavior is not desired, call the clear_state method between evaluations:
-    /// let result_one = adder.evaluate(&vec![1.0]);
+    /// let result_one = adder.evaluate(&[1.0]);
     ///
     /// adder.clear_state();
     ///
     /// // The 1.0 from the previous call is gone, so result_two will be 2.0
-    /// let result_two = adder.evaluate(&vec![2.0]);
+    /// let result_two = adder.evaluate(&[2.0]);
     /// ```
     pub fn evaluate(&mut self, inputs: &[f64]) -> Vec<f64> {
         // Set inputs
@@ -195,7 +195,10 @@ impl Network {
                     // off the stack, and push their sum multiplied by the neurons weight onto the
                     // stack
                     let (weight, _, value, inputs) = self.genome[gene_index].ref_mut_neuron().unwrap();
-                    let new_value = stack.pop(*inputs).unwrap().iter().fold(0.0, |acc, i| acc + i);
+                    let new_value = stack.pop(*inputs)
+                                         .expect("A neuron did not receive enough inputs")
+                                         .iter()
+                                         .fold(0.0, |acc, i| acc + i);
 
                     if neuron_update {
                         *value = new_value;
@@ -215,7 +218,8 @@ impl Network {
                     // weight onto the stack
                     let weight = self.genome[gene_index].weight;
                     let id = self.genome[gene_index].id;
-                    let subnetwork_range = self.get_subnetwork_index(id).unwrap();
+                    let subnetwork_range = self.get_subnetwork_index(id)
+                                               .expect("Found forward connection with invalid neuron id");
 
                     let result = self.evaluate_slice(subnetwork_range, false, depth + 1);
                     // println!("{:?}", result);
@@ -225,7 +229,8 @@ impl Network {
                     // If the gene is a recurrent jumper, push the previous value of the neuron
                     // with the id of the jumper multiplied by the jumpers weight onto the stack
                     let gene = &self.genome[gene_index];
-                    let neuron = &self.genome[self.get_neuron_index(gene.id).unwrap()];
+                    let neuron = &self.genome[self.get_neuron_index(gene.id)
+                                                  .expect("Found recurrent connection with invalid neuron id")];
                     
                     if let Neuron(ref current_value, _) = neuron.variant {
                         stack.push(gene.weight * *current_value);
