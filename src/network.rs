@@ -117,8 +117,9 @@ impl Network {
     ///
     /// The format for the string is simple enough to build by hand:
     /// 
-    /// First, the number 0, 1 or 2 is entered to represent the linear, sign, or sigmoid
-    /// function, followed by a colon. The rest is the genome, encoded with comma separated genes:
+    /// First, the number 0, 1, 2 or 3 is entered to represent the linear, threshold, sign, or
+    /// sigmoid function, followed by a colon. The rest is the genome, encoded with comma
+    /// separated genes:
     ///
     /// Neuron:     n <weight> <id> <input count>
     /// Input:      i <weight> <id>
@@ -224,6 +225,7 @@ impl Network {
 
                     new_value = match self.function {
                         TransferFunction::Linear => new_value,
+                        TransferFunction::Threshold => threshold(new_value),
                         TransferFunction::Sign => sign(new_value),
                         TransferFunction::Sigmoid => sigmoid(new_value),
                     };

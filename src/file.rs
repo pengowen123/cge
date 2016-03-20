@@ -17,8 +17,9 @@ pub fn from_str(string: &str) -> Option<Network> {
     let function = if let Ok(v) = parts[0].parse() {
         match v {
             0 => TransferFunction::Linear,
-            1 => TransferFunction::Sign,
-            2 => TransferFunction::Sigmoid,
+            1 => TransferFunction::Threshold,
+            2 => TransferFunction::Sign,
+            3 => TransferFunction::Sigmoid,
             _ => return None
         }
     } else {
