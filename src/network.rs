@@ -121,11 +121,11 @@ impl Network {
     /// sigmoid function, followed by a colon. The rest is the genome, encoded with comma
     /// separated genes:
     ///
-    /// Neuron:     n <weight> <id> <input count>
-    /// Input:      i <weight> <id>
-    /// Connection: f <weight> <id>
-    /// Recurrent:  r <weight> <id>
-    /// Bias:       b <weight>
+    /// Neuron:     n [weight] [id] [input count]
+    /// Input:      i [weight] [id]
+    /// Connection: f [weight] [id]
+    /// Recurrent:  r [weight] [id]
+    /// Bias:       b [weight]
     ///
     /// For more information about what this means, see [here][1].
     ///
