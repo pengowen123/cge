@@ -11,7 +11,7 @@ pub enum TransferFunction {
     /// Outputs 1 if input is greater than 0, 0 otherwise.
     Threshold,
     /// Outputs 1 if input is greater than 0, 0 if input is equal to 0, -1 otherwise. Useful
-    /// for simple problems and boolean logic, as it only allows two possible output values.
+    /// for simple problems and boolean logic, as it only allows three possible output values.
     Sign,
     /// A non-linear function. This function is the most general, so it should be defaulted to.
     Sigmoid
