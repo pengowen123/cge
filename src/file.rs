@@ -15,13 +15,7 @@ pub fn from_str(string: &str) -> Option<Network> {
     }
 
     let function = if let Ok(v) = parts[0].parse() {
-        match v {
-            0 => Activation::Linear,
-            1 => Activation::Threshold,
-            2 => Activation::Sign,
-            3 => Activation::Sigmoid,
-            _ => return None
-        }
+        Activation::from_i32(v)
     } else {
         return None;
     };

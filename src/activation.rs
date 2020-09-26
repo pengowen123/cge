@@ -22,6 +22,7 @@ pub enum Activation {
 }
 
 impl Activation {
+    /// Return the corresponding function to the Activation
     pub fn get_func(&self) -> fn(f64) -> f64 {
         match self {
             Activation::Linear => linear,
@@ -32,6 +33,20 @@ impl Activation {
             Activation::SoftSign => soft_sign,
             Activation::BentIdentity => bent_identity,
             Activation::Relu => relu,
+        }
+    }
+
+    /// parse the Activation from an int 32 value
+    pub fn from_i32(n: i32) -> Activation {
+        match n {
+            0 => Activation::Linear,
+            1 => Activation::Threshold,
+            2 => Activation::Sign,
+            3 => Activation::Sigmoid,
+            4 => Activation::Tanh,
+            5 => Activation::SoftSign,
+            6 => Activation::BentIdentity,
+            _ => Activation::Relu,
         }
     }
 }
