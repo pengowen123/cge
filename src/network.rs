@@ -3,11 +3,11 @@
 use std::ops::Range;
 use std::io;
 
-use utils::Stack;
-use file;
-use gene::*;
-use gene::GeneExtras::*;
-use transfer::*;
+use crate::utils::Stack;
+use crate::file;
+use crate::gene::*;
+use crate::gene::GeneExtras::*;
+use crate::transfer::*;
 
 const BIAS_GENE_VALUE: f64 = 1.0;
 

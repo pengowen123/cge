@@ -3,9 +3,9 @@ use std::fs::File;
 use std::io::{Read, Write, Error, ErrorKind};
 use std::io;
 
-use Network;
-use gene::*;
-use transfer::*;
+use crate::Network;
+use crate::gene::*;
+use crate::transfer::*;
 
 pub fn from_str(string: &str) -> Option<Network> {
     let parts = string.split(":").collect::<Vec<_>>();
@@ -125,10 +125,10 @@ pub fn to_str(network: &Network) -> String {
 
 pub fn read_network(path: &str) -> io::Result<Network> {
     let path = Path::new(path);
-    let mut file = try!(File::open(path));
+    let mut file = File::open(path)?;
     let mut data = String::new();
 
-    try!(file.read_to_string(&mut data));
+    file.read_to_string(&mut data)?;
 
     let network = from_str(&data);
 
@@ -140,7 +140,7 @@ pub fn read_network(path: &str) -> io::Result<Network> {
 
 pub fn write_network(network: &Network, path: &str) -> io::Result<()> {
     let path = Path::new(path);
-    let mut file = try!(File::create(path));
+    let mut file = File::create(path)?;
     let data = to_str(network);
     
     file.write_all(data.as_bytes())
