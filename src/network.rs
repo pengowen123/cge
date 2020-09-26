@@ -71,15 +71,7 @@ impl Network {
         self.set_inputs(inputs);
 
         let size = self.size;
-        self.evaluate_slice(0..size, true, false)
-    }
-
-    /// Evaluates the neural network the same as `evaluate`, but prints debug info.
-    pub fn debug_eval(&mut self, inputs: &[f64]) -> Vec<f64> {
-        self.set_inputs(inputs);
-
-        let size = self.size;
-        self.evaluate_slice(0..size, true, true)
+        self.evaluate_slice(0..size, true)
     }
 
     /// Clears the internal state of the neural network.
@@ -193,7 +185,7 @@ impl Network {
     }
 
     // Returns the output of sub-linear genome in the given range
-    fn evaluate_slice(&mut self, range: Range<usize>, neuron_update: bool, debug: bool) -> Vec<f64> {
+    fn evaluate_slice(&mut self, range: Range<usize>, neuron_update: bool) -> Vec<f64> {
         let mut gene_index = range.end;
         // Initialize a stack for evaluating the neural network
         let mut stack = Stack::new();
@@ -202,9 +194,7 @@ impl Network {
         while gene_index >= range.start {
             let variant = self.genome[gene_index].variant;
 
-            if debug {
-                println!("{:?}", variant);
-            }
+            debug!("{:?}", variant);
 
             match variant {
                 Input(_) => {
@@ -251,11 +241,9 @@ impl Network {
                     let subnetwork_range = self.get_subnetwork_index(id)
                                                .expect("Found forward connection with invalid neuron id");
 
-                    let result = self.evaluate_slice(subnetwork_range, false, debug);
+                    let result = self.evaluate_slice(subnetwork_range, false);
 
-                    if debug {
-                        println!("{:?}", result);
-                    }
+                    debug!("{:?}", result);
 
                     stack.push(weight * result[0]);
                 },
@@ -284,9 +272,7 @@ impl Network {
 
             gene_index -= 1;
 
-            if debug {
-                println!("{:?}", stack.data);
-            }
+            debug!("{:?}", stack.data);
         }
 
         stack.data

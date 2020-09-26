@@ -23,6 +23,8 @@
 // TODO: Implement a display for Network (make a pretty tree of lines)
 // In the future, create a program for visualizing a neural network (generate an image or html)
 
+#[macro_use] extern crate log;
+
 mod utils;
 mod file;
 pub mod activation;

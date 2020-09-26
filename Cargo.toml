@@ -5,3 +5,4 @@ authors = ["pengowen123 <pengowen816@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+log = "0.4.11"
