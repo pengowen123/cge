@@ -91,13 +91,13 @@ pub fn from_str(string: &str) -> Option<Network> {
 
     Some(Network {
         size: genome.len() - 1,
-        genome: genome,
-        function: function
+        genome,
+        function
     })
 }
 
 pub fn to_str(network: &Network) -> String {
-    let mut data = format!("{}: ", network.function.clone() as i32);
+    let mut data = format!("{}: ", network.function as i32);
 
     for gene in &network.genome {
         match gene.variant {

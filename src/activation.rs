@@ -14,7 +14,30 @@ pub enum Activation {
     /// for simple problems and boolean logic, as it only allows three possible output values.
     Sign,
     /// A non-linear function. This function is the most general, so it should be defaulted to.
-    Sigmoid
+    Sigmoid,
+    Tanh,
+    SoftSign,
+    BentIdentity,
+    Relu,
+}
+
+impl Activation {
+    pub fn get_func(&self) -> fn(f64) -> f64 {
+        match self {
+            Activation::Linear => linear,
+            Activation::Threshold => threshold,
+            Activation::Sign => sign,
+            Activation::Sigmoid => sigmoid,
+            Activation::Tanh => tanh,
+            Activation::SoftSign => soft_sign,
+            Activation::BentIdentity => bent_identity,
+            Activation::Relu => relu,
+        }
+    }
+}
+
+pub fn linear(x: f64) -> f64 {
+    x
 }
 
 pub fn threshold(x: f64) -> f64 {
@@ -37,4 +60,25 @@ pub fn sign(x: f64) -> f64 {
 
 pub fn sigmoid(x: f64) -> f64 {
     1.0 / (1.0 + (-x).exp())
+}
+
+pub fn tanh(x: f64) -> f64 {
+    x.tanh()
+}
+
+pub fn soft_sign(x: f64) -> f64 {
+    x / (1.0 + x.abs())
+}
+
+pub fn bent_identity(x: f64) -> f64 {
+    (((x.powi(2) + 1.0).sqrt() - 1.0) / 2.0) + x
+}
+
+/// rectified linear unit
+pub fn relu(x: f64) -> f64 {
+    return if x > 0.0 {
+        x
+    } else {
+        0.0
+    }
 }

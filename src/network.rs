@@ -189,6 +189,9 @@ impl Network {
         let mut gene_index = range.end;
         // Initialize a stack for evaluating the neural network
         let mut stack = Stack::new();
+
+        // TODO: activation function for each node
+        let act_func = self.function.get_func();
         
         // Iterate backwards over the specified slice
         while gene_index >= range.start {
@@ -213,12 +216,8 @@ impl Network {
                                          .iter()
                                          .fold(0.0, |acc, i| acc + i);
 
-                    new_value = match self.function {
-                        Activation::Linear => new_value,
-                        Activation::Threshold => threshold(new_value),
-                        Activation::Sign => sign(new_value),
-                        Activation::Sigmoid => sigmoid(new_value),
-                    };
+                    // apply the activation function
+                    new_value = (act_func)(new_value);
 
                     if neuron_update {
                         *value = new_value;
