@@ -7,7 +7,7 @@ use crate::utils::Stack;
 use crate::file;
 use crate::gene::*;
 use crate::gene::GeneExtras::*;
-use crate::transfer::*;
+use crate::activation::*;
 
 const BIAS_GENE_VALUE: f64 = 1.0;
 
@@ -16,7 +16,7 @@ pub struct Network {
     // size should be the length of the genome minus one, don't forget
     pub size: usize,
     pub genome: Vec<Gene>,
-    pub function: TransferFunction
+    pub function: Activation
 }
 
 impl Network {
@@ -145,7 +145,7 @@ impl Network {
     /// let network = Network {
     ///     size: 0,
     ///     genome: Vec::new(),
-    ///     function: TransferFunction::Sign
+    ///     function: Activation::Sign
     /// };
     ///
     /// // Save the neural network to the string
@@ -166,7 +166,7 @@ impl Network {
     /// let network = Network {
     ///     size: 0,
     ///     genome: Vec::new(),
-    ///     function: TransferFunction::Sign
+    ///     function: Activation::Sign
     /// };
     ///
     /// // Save the neural network to neural_network.ann
@@ -200,7 +200,7 @@ impl Network {
         
         // Iterate backwards over the specified slice
         while gene_index >= range.start {
-            let variant = self.genome[gene_index].variant.clone();
+            let variant = self.genome[gene_index].variant;
 
             if debug {
                 println!("{:?}", variant);
@@ -224,10 +224,10 @@ impl Network {
                                          .fold(0.0, |acc, i| acc + i);
 
                     new_value = match self.function {
-                        TransferFunction::Linear => new_value,
-                        TransferFunction::Threshold => threshold(new_value),
-                        TransferFunction::Sign => sign(new_value),
-                        TransferFunction::Sigmoid => sigmoid(new_value),
+                        Activation::Linear => new_value,
+                        Activation::Threshold => threshold(new_value),
+                        Activation::Sign => sign(new_value),
+                        Activation::Sigmoid => sigmoid(new_value),
                     };
 
                     if neuron_update {
@@ -339,8 +339,8 @@ impl Network {
             None
         } else {
             Some(Range {
-                start: start,
-                end: end
+                start,
+                end
             })
         }
     }

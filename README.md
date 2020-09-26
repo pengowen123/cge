@@ -20,3 +20,12 @@ extern crate cge;
 ```
 
 See the [documentation](http://pengowen123.github.io/cge/cge/index.html) for complete instructions.
+
+
+## TODOs:
+- use pretty_env_logger for debug logging
+- include activation function in gene rather than network wide
+- add more activation functions
+- add Activation::get_func(&self) -> fn(f64) -> f64
+- resolve TODOs
+- update README.md

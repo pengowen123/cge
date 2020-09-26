@@ -5,7 +5,7 @@ use std::io;
 
 use crate::Network;
 use crate::gene::*;
-use crate::transfer::*;
+use crate::activation::*;
 
 pub fn from_str(string: &str) -> Option<Network> {
     let parts = string.split(":").collect::<Vec<_>>();
@@ -16,10 +16,10 @@ pub fn from_str(string: &str) -> Option<Network> {
 
     let function = if let Ok(v) = parts[0].parse() {
         match v {
-            0 => TransferFunction::Linear,
-            1 => TransferFunction::Threshold,
-            2 => TransferFunction::Sign,
-            3 => TransferFunction::Sigmoid,
+            0 => Activation::Linear,
+            1 => Activation::Threshold,
+            2 => Activation::Sign,
+            3 => Activation::Sigmoid,
             _ => return None
         }
     } else {

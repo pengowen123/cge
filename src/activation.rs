@@ -4,8 +4,8 @@
 //! Option type for setting the transfer function.
 
 /// Represents which transfer function to use for evaluating neural networks.
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum TransferFunction {
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub enum Activation {
     /// Maps input to output directly, as if there is no transfer function.
     Linear,
     /// Outputs 1 if input is greater than 0, 0 otherwise.
