@@ -3,9 +3,9 @@ use std::fs::File;
 use std::io::{Read, Write, Error, ErrorKind};
 use std::io;
 
-use Network;
-use gene::*;
-use transfer::*;
+use crate::Network;
+use crate::gene::*;
+use crate::activation::*;
 
 pub fn from_str(string: &str) -> Option<Network> {
     let parts = string.split(":").collect::<Vec<_>>();
@@ -15,13 +15,7 @@ pub fn from_str(string: &str) -> Option<Network> {
     }
 
     let function = if let Ok(v) = parts[0].parse() {
-        match v {
-            0 => TransferFunction::Linear,
-            1 => TransferFunction::Threshold,
-            2 => TransferFunction::Sign,
-            3 => TransferFunction::Sigmoid,
-            _ => return None
-        }
+        Activation::from_i32(v)
     } else {
         return None;
     };
@@ -91,13 +85,13 @@ pub fn from_str(string: &str) -> Option<Network> {
 
     Some(Network {
         size: genome.len() - 1,
-        genome: genome,
-        function: function
+        genome,
+        function
     })
 }
 
 pub fn to_str(network: &Network) -> String {
-    let mut data = format!("{}: ", network.function.clone() as i32);
+    let mut data = format!("{}: ", network.function as i32);
 
     for gene in &network.genome {
         match gene.variant {
@@ -125,10 +119,10 @@ pub fn to_str(network: &Network) -> String {
 
 pub fn read_network(path: &str) -> io::Result<Network> {
     let path = Path::new(path);
-    let mut file = try!(File::open(path));
+    let mut file = File::open(path)?;
     let mut data = String::new();
 
-    try!(file.read_to_string(&mut data));
+    file.read_to_string(&mut data)?;
 
     let network = from_str(&data);
 
@@ -140,7 +134,7 @@ pub fn read_network(path: &str) -> io::Result<Network> {
 
 pub fn write_network(network: &Network, path: &str) -> io::Result<()> {
     let path = Path::new(path);
-    let mut file = try!(File::create(path));
+    let mut file = File::create(path)?;
     let data = to_str(network);
     
     file.write_all(data.as_bytes())

@@ -3,7 +3,7 @@ extern crate cge;
 use cge::Network;
 use cge::gene::Gene;
 use cge::gene::GeneExtras::*;
-use cge::TransferFunction;
+use cge::Activation;
 
 const TEST_GENOME: [Gene; 12] = [
     Gene {
@@ -110,7 +110,7 @@ fn test_network_eval() {
     let mut network = Network {
         size: 11,
         genome: TEST_GENOME.to_vec(),
-        function: TransferFunction::Linear
+        function: Activation::Linear
     };
 
     let inputs = [1.0, 1.0];

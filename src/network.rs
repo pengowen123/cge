@@ -3,11 +3,11 @@
 use std::ops::Range;
 use std::io;
 
-use utils::Stack;
-use file;
-use gene::*;
-use gene::GeneExtras::*;
-use transfer::*;
+use crate::utils::Stack;
+use crate::file;
+use crate::gene::*;
+use crate::gene::GeneExtras::*;
+use crate::activation::*;
 
 const BIAS_GENE_VALUE: f64 = 1.0;
 
@@ -16,7 +16,7 @@ pub struct Network {
     // size should be the length of the genome minus one, don't forget
     pub size: usize,
     pub genome: Vec<Gene>,
-    pub function: TransferFunction
+    pub function: Activation
 }
 
 impl Network {
@@ -71,15 +71,7 @@ impl Network {
         self.set_inputs(inputs);
 
         let size = self.size;
-        self.evaluate_slice(0..size, true, false)
-    }
-
-    /// Evaluates the neural network the same as `evaluate`, but prints debug info.
-    pub fn debug_eval(&mut self, inputs: &[f64]) -> Vec<f64> {
-        self.set_inputs(inputs);
-
-        let size = self.size;
-        self.evaluate_slice(0..size, true, true)
+        self.evaluate_slice(0..size, true)
     }
 
     /// Clears the internal state of the neural network.
@@ -145,7 +137,7 @@ impl Network {
     /// let network = Network {
     ///     size: 0,
     ///     genome: Vec::new(),
-    ///     function: TransferFunction::Sign
+    ///     function: Activation::Sign
     /// };
     ///
     /// // Save the neural network to the string
@@ -166,7 +158,7 @@ impl Network {
     /// let network = Network {
     ///     size: 0,
     ///     genome: Vec::new(),
-    ///     function: TransferFunction::Sign
+    ///     function: Activation::Sign
     /// };
     ///
     /// // Save the neural network to neural_network.ann
@@ -193,18 +185,19 @@ impl Network {
     }
 
     // Returns the output of sub-linear genome in the given range
-    fn evaluate_slice(&mut self, range: Range<usize>, neuron_update: bool, debug: bool) -> Vec<f64> {
+    fn evaluate_slice(&mut self, range: Range<usize>, neuron_update: bool) -> Vec<f64> {
         let mut gene_index = range.end;
         // Initialize a stack for evaluating the neural network
         let mut stack = Stack::new();
+
+        // TODO: activation function for each node
+        let act_func = self.function.get_func();
         
         // Iterate backwards over the specified slice
         while gene_index >= range.start {
-            let variant = self.genome[gene_index].variant.clone();
+            let variant = self.genome[gene_index].variant;
 
-            if debug {
-                println!("{:?}", variant);
-            }
+            debug!("{:?}", variant);
 
             match variant {
                 Input(_) => {
@@ -223,12 +216,8 @@ impl Network {
                                          .iter()
                                          .fold(0.0, |acc, i| acc + i);
 
-                    new_value = match self.function {
-                        TransferFunction::Linear => new_value,
-                        TransferFunction::Threshold => threshold(new_value),
-                        TransferFunction::Sign => sign(new_value),
-                        TransferFunction::Sigmoid => sigmoid(new_value),
-                    };
+                    // apply the activation function
+                    new_value = (act_func)(new_value);
 
                     if neuron_update {
                         *value = new_value;
@@ -251,11 +240,9 @@ impl Network {
                     let subnetwork_range = self.get_subnetwork_index(id)
                                                .expect("Found forward connection with invalid neuron id");
 
-                    let result = self.evaluate_slice(subnetwork_range, false, debug);
+                    let result = self.evaluate_slice(subnetwork_range, false);
 
-                    if debug {
-                        println!("{:?}", result);
-                    }
+                    debug!("{:?}", result);
 
                     stack.push(weight * result[0]);
                 },
@@ -284,9 +271,7 @@ impl Network {
 
             gene_index -= 1;
 
-            if debug {
-                println!("{:?}", stack.data);
-            }
+            debug!("{:?}", stack.data);
         }
 
         stack.data
@@ -339,8 +324,8 @@ impl Network {
             None
         } else {
             Some(Range {
-                start: start,
-                end: end
+                start,
+                end
             })
         }
     }
