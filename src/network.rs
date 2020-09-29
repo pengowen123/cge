@@ -71,7 +71,7 @@ impl Network {
         self.set_inputs(inputs);
 
         let size = self.size;
-        self.evaluate_slice(0..size, true)
+        self.evaluate_slice(0..size, true, false)
     }
 
     /// Clears the internal state of the neural network.
@@ -108,16 +108,16 @@ impl Network {
     /// # Format
     ///
     /// The format for the string is simple enough to build by hand:
-    /// 
+    ///
     /// First, the number 0, 1, 2 or 3 is entered to represent the linear, threshold, sign, or
     /// sigmoid function, followed by a colon. The rest is the genome, encoded with comma
     /// separated genes:
     ///
-    /// Neuron:     n [weight] [id] [input count]  
-    /// Input:      i [weight] [id]  
-    /// Connection: f [weight] [id]  
-    /// Recurrent:  r [weight] [id]  
-    /// Bias:       b [weight]  
+    /// Neuron:     n [weight] [id] [input count]
+    /// Input:      i [weight] [id]
+    /// Connection: f [weight] [id]
+    /// Recurrent:  r [weight] [id]
+    /// Bias:       b [weight]
     ///
     /// For more information about what this means, see [here][1].
     ///
@@ -171,7 +171,7 @@ impl Network {
     /// Loads a neural network from a file. No guarantees are made about the validity of the
     /// genome. Returns the network, or an io error. If the file is in a bad format,
     /// `std::io::ErrorKind::InvalidData` is returned.
-    /// 
+    ///
     /// # Examples
     ///
     /// ```no_run
@@ -185,19 +185,21 @@ impl Network {
     }
 
     // Returns the output of sub-linear genome in the given range
-    fn evaluate_slice(&mut self, range: Range<usize>, neuron_update: bool) -> Vec<f64> {
+    // The j flag indicates whether or not a jump forward connection is being evaluated,
+    // in that case, do not include regular connection weight of neuron as this would be incorrect
+    fn evaluate_slice(&mut self, range: Range<usize>, neuron_update: bool, j: bool) -> Vec<f64> {
+        debug!("evaluate_slice in range: {:?}", range);
+
         let mut gene_index = range.end;
         // Initialize a stack for evaluating the neural network
         let mut stack = Stack::new();
 
         // TODO: activation function for each node
         let act_func = self.function.get_func();
-        
+
         // Iterate backwards over the specified slice
         while gene_index >= range.start {
             let variant = self.genome[gene_index].variant;
-
-            debug!("{:?}", variant);
 
             match variant {
                 Input(_) => {
@@ -212,9 +214,9 @@ impl Network {
                     // inputs multiplied by the neurons weight onto the stack
                     let (weight, _, value, inputs) = self.genome[gene_index].ref_mut_neuron().unwrap();
                     let mut new_value = stack.pop(*inputs)
-                                         .expect("A neuron did not receive enough inputs")
-                                         .iter()
-                                         .fold(0.0, |acc, i| acc + i);
+                        .expect("A neuron did not receive enough inputs")
+                        .iter()
+                        .fold(0.0, |acc, i| acc + i);
 
                     // apply the activation function
                     new_value = (act_func)(new_value);
@@ -223,7 +225,14 @@ impl Network {
                         *value = new_value;
                     }
 
-                    stack.push(*weight * new_value);
+                    if j {
+                        // when j flag is set,
+                        // do not include weight of link as jump forward has a different weight
+                        stack.push(new_value);
+                    } else {
+                        // otherwise use regular weight of connection in stack
+                        stack.push(*weight * new_value);
+                    }
                 },
                 Forward => {
                     // This is inefficient because it can run the neuron evaluation code multiple
@@ -238,9 +247,11 @@ impl Network {
                     let weight = self.genome[gene_index].weight;
                     let id = self.genome[gene_index].id;
                     let subnetwork_range = self.get_subnetwork_index(id)
-                                               .expect("Found forward connection with invalid neuron id");
+                        .expect("Found forward connection with invalid neuron id");
 
-                    let result = self.evaluate_slice(subnetwork_range, false);
+                    // set j flag to true so the neuron does not include it's regular link weight
+                    // otherwise the values will be off by whatever factor the neuron weight is
+                    let result = self.evaluate_slice(subnetwork_range, false, true);
 
                     debug!("{:?}", result);
 
@@ -251,8 +262,8 @@ impl Network {
                     // with the id of the jumper multiplied by the jumpers weight onto the stack
                     let gene = &self.genome[gene_index];
                     let neuron = &self.genome[self.get_neuron_index(gene.id)
-                                                  .expect("Found recurrent connection with invalid neuron id")];
-                    
+                        .expect("Found recurrent connection with invalid neuron id")];
+
                     if let Neuron(ref current_value, _) = neuron.variant {
                         stack.push(gene.weight * *current_value);
                     }
@@ -301,7 +312,7 @@ impl Network {
         let mut end = start;
         let mut sum = 0;
 
-        // Iterate through genes after the start index, modifying the sum each step 
+        // Iterate through genes after the start index, modifying the sum each step
         // I could use an iterator here, but it would be messy
         for gene in &self.genome[start..self.size + 1] {
             match gene.variant {
@@ -343,5 +354,84 @@ impl Network {
         }
 
         result
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use super::*;
+
+    // linear genome from fig. 5.3 in paper:
+    // https://www.researchgate.net/profile/Yohannes_Kassahun/publication/266864021_Towards_a_Unified_Approach_to_Learning_and_Adaptation/links/54ba91790cf253b50e2d037d.pdf?origin=publication_detail
+    pub(crate) const TEST_GENOME: [Gene; 11] = [
+        Gene {
+            weight: 0.6,
+            id: 0,
+            variant: Neuron(0.0, 2)
+        },
+        Gene {
+            weight: 0.8,
+            id: 1,
+            variant: Neuron(0.0, 2)
+        },
+        Gene {
+            weight: 0.9,
+            id: 3,
+            variant: Neuron(0.0, 2)
+        },
+        Gene {
+            weight: 0.1,
+            id: 0,
+            variant: Input(0.0)
+        },
+        Gene {
+            weight: 0.4,
+            id: 1,
+            variant: Input(0.0)
+        },
+        Gene {
+            weight: 0.5,
+            id: 1,
+            variant: Input(0.0)
+        },
+        Gene {
+            weight: 0.2,
+            id: 2,
+            variant: Neuron(0.0, 4)
+        },
+        Gene {
+            weight: 0.3,
+            id: 3,
+            variant: Forward
+        },
+        Gene {
+            weight: 0.7,
+            id: 0,
+            variant: Input(0.0)
+        },
+        Gene {
+            weight: 0.8,
+            id: 1,
+            variant: Input(0.0)
+        },
+        Gene {
+            weight: 0.2,
+            id: 0,
+            variant: Recurrent
+        },
+    ];
+
+    #[test]
+    fn test_genome_is_correct() {
+        pretty_env_logger::init();
+
+        let mut net = Network{
+            size: TEST_GENOME.len() - 1,
+            genome: TEST_GENOME.to_vec(),
+            function: Activation::Linear
+        };
+        let output = net.evaluate(&vec![1.0, 1.0]);
+        assert_eq!(output.len(), 1);
+        assert_eq!(output[0], 0.654);
     }
 }
