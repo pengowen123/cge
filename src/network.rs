@@ -185,7 +185,7 @@ impl Network {
     }
 
     // Returns the output of sub-linear genome in the given range
-    // The j flag indicates whether or not a jump forward connection is being evaluated,
+    // The j flag indicates whether or not the last node in the jump forward connection calculation is being evaluated,
     // in that case, do not include regular connection weight of neuron as this would be incorrect
     fn evaluate_slice(&mut self, range: Range<usize>, neuron_update: bool, j: bool) -> Vec<f64> {
         debug!("evaluate_slice in range: {:?}", range);
@@ -225,9 +225,9 @@ impl Network {
                         *value = new_value;
                     }
 
-                    if j {
+                    if j && gene_index == range.start {
                         // when j flag is set,
-                        // do not include weight of link as jump forward has a different weight
+                        // do not include weight of last neuron link as jump forward has a different weight
                         stack.push(new_value);
                     } else {
                         // otherwise use regular weight of connection in stack
@@ -421,9 +421,80 @@ pub(crate) mod tests {
         },
     ];
 
+    // This genome has one more neuron than TEST_GENOME
+    // It is placed between neuron 3 and input id 1 by splitting one connection into two
+    // Therefore the Genome has one more gene
+    // The link weight connecting neuron 3 and 4 is 0.2,
+    // The link weight connecting neuron 4 and input 1 is 0.3
+    // removed original connection gene from neuron 3 to input 1
+    const TEST_GENOME_2: [Gene; 12] = [
+        Gene {
+            weight: 0.6,
+            id: 0,
+            variant: Neuron(0.0, 2)
+        },
+        Gene {
+            weight: 0.8,
+            id: 1,
+            variant: Neuron(0.0, 2)
+        },
+        Gene {
+            weight: 0.9,
+            id: 3,
+            variant: Neuron(0.0, 2)
+        },
+        Gene {
+            weight: 0.1,
+            id: 0,
+            variant: Input(0.0)
+        },
+        Gene {
+            weight: 0.2,
+            id: 4,
+            variant: Neuron(0.0, 1)
+        },
+        Gene {
+            weight: 0.3,
+            id: 1,
+            variant: Input(0.0)
+        },
+        Gene {
+            weight: 0.5,
+            id: 1,
+            variant: Input(0.0)
+        },
+        Gene {
+            weight: 0.2,
+            id: 2,
+            variant: Neuron(0.0, 4)
+        },
+        Gene {
+            weight: 0.3,
+            id: 3,
+            variant: Forward
+        },
+        Gene {
+            weight: 0.7,
+            id: 0,
+            variant: Input(0.0)
+        },
+        Gene {
+            weight: 0.8,
+            id: 1,
+            variant: Input(0.0)
+        },
+        Gene {
+            weight: 0.2,
+            id: 0,
+            variant: Recurrent
+        },
+    ];
+
     #[test]
     fn test_genome_is_correct() {
-        pretty_env_logger::init();
+        if let Err(_) = pretty_env_logger::try_init() {
+            // ignore error due to it being already initialized
+        };
 
         let mut net = Network{
             size: TEST_GENOME.len() - 1,
@@ -433,5 +504,21 @@ pub(crate) mod tests {
         let output = net.evaluate(&vec![1.0, 1.0]);
         assert_eq!(output.len(), 1);
         assert_eq!(output[0], 0.654);
+    }
+
+    #[test]
+    fn jump_recurrent_is_correct() {
+        if let Err(_) = pretty_env_logger::try_init() {
+            // ignore error due to it being already initialized
+        };
+
+        let mut net = Network{
+            size: TEST_GENOME_2.len() - 1,
+            genome: TEST_GENOME_2.to_vec(),
+            function: Activation::Linear,
+        };
+        let output = net.evaluate(&vec![1.0, 1.0]);
+        assert_eq!(output.len(), 1);
+        assert_eq!(output[0], 0.49488);
     }
 }
