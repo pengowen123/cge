@@ -3,8 +3,8 @@
 pub enum GeneExtras {
     /// Input contains a current value
     Input(f64),
-    /// Neuron contains a current value and an input count
-    Neuron(f64, usize),
+    /// Neuron contains a current value, a previous value, and an input count
+    Neuron(f64, f64, usize),
     Forward,
     Recurrent,
     Bias
@@ -54,7 +54,7 @@ impl Gene {
         Gene {
             weight,
             id,
-            variant: GeneExtras::Neuron(0.0, inputs)
+            variant: GeneExtras::Neuron(0.0, 0.0, inputs)
         }
     }
 
@@ -68,18 +68,18 @@ impl Gene {
     }
 
     #[doc(hidden)]
-    pub fn ref_neuron(&self) -> Option<(f64, usize, f64, usize)> {
-        if let GeneExtras::Neuron(ref value, ref inputs) = self.variant {
-            Some((self.weight, self.id, *value, *inputs))
+    pub fn ref_neuron(&self) -> Option<(f64, usize, f64, f64, usize)> {
+        if let GeneExtras::Neuron(ref current_value, ref previous_value, ref inputs) = self.variant {
+            Some((self.weight, self.id, *current_value, *previous_value, *inputs))
         } else {
             None
         }
     }
 
     #[doc(hidden)]
-    pub fn ref_mut_neuron(&mut self) -> Option<(&mut f64, &mut usize, &mut f64, &mut usize)> {
-        if let GeneExtras::Neuron(ref mut value, ref mut inputs) = self.variant {
-            Some((&mut self.weight, &mut self.id, value, inputs))
+    pub fn ref_mut_neuron(&mut self) -> Option<(&mut f64, &mut usize, &mut f64, &mut f64, &mut usize)> {
+        if let GeneExtras::Neuron(ref mut current_value, ref mut previous_value, ref mut inputs) = self.variant {
+            Some((&mut self.weight, &mut self.id, current_value, previous_value, inputs))
         } else {
             None
         }

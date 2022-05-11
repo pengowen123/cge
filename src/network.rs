@@ -71,7 +71,11 @@ impl Network {
         self.set_inputs(inputs);
 
         let size = self.size;
-        self.evaluate_slice(0..size, true, false)
+        let result = self.evaluate_slice(0..size, true, false);
+
+        self.update_previous_values();
+
+        result
     }
 
     /// Clears the internal state of the neural network.
@@ -81,8 +85,9 @@ impl Network {
                 Input(ref mut current_value) => {
                     *current_value = 0.0;
                 },
-                Neuron(ref mut current_value, _) => {
+                Neuron(ref mut current_value, ref mut previous_value, _) => {
                     *current_value = 0.0;
+                    *previous_value = 0.0;
                 }
                 _ => {}
             }
@@ -208,11 +213,12 @@ impl Network {
                     let (weight, _, value) = self.genome[gene_index].ref_input().unwrap();
                     stack.push(weight * value);
                 },
-                Neuron(_, _) => {
+                Neuron(_, _, _) => {
                     // If the gene is a neuron, pop a number (the neurons input count) of inputs
                     // off the stack, and push the transfer function applied to the sum of these
                     // inputs multiplied by the neurons weight onto the stack
-                    let (weight, _, value, inputs) = self.genome[gene_index].ref_mut_neuron().unwrap();
+                    let (weight, _, current_value, _, inputs)
+                        = self.genome[gene_index].ref_mut_neuron().unwrap();
                     let mut new_value = stack.pop(*inputs)
                         .expect("A neuron did not receive enough inputs")
                         .iter()
@@ -221,8 +227,9 @@ impl Network {
                     // apply the activation function
                     new_value = (act_func)(new_value);
 
+                    // Store the neuron's current value in order to update the previous value later
                     if neuron_update {
-                        *value = new_value;
+                        *current_value = new_value;
                     }
 
                     if j && gene_index == range.start {
@@ -264,8 +271,8 @@ impl Network {
                     let neuron = &self.genome[self.get_neuron_index(gene.id)
                         .expect("Found recurrent connection with invalid neuron id")];
 
-                    if let Neuron(ref current_value, _) = neuron.variant {
-                        stack.push(gene.weight * *current_value);
+                    if let Neuron(_, previous_value, _) = neuron.variant {
+                        stack.push(gene.weight * previous_value);
                     }
                 },
                 Bias => {
@@ -286,6 +293,14 @@ impl Network {
         }
 
         stack.data
+    }
+
+    fn update_previous_values(&mut self) {
+        for gene in &mut self.genome {
+            if let Neuron(ref current_value, ref mut previous_value, _) = gene.variant {
+                *previous_value = *current_value;
+            }
+        }
     }
 
     fn set_inputs(&mut self, inputs: &[f64]) {
@@ -316,7 +331,7 @@ impl Network {
         // I could use an iterator here, but it would be messy
         for gene in &self.genome[start..self.size + 1] {
             match gene.variant {
-                Neuron(_, ref inputs) => {
+                Neuron(_, _, ref inputs) => {
                     sum += 1 - *inputs as i32;
                 },
                 _ => {
@@ -346,7 +361,7 @@ impl Network {
         let mut result = None;
 
         for (i, gene) in self.genome.iter().enumerate() {
-            if let Neuron(_, _) = gene.variant {
+            if let Neuron(_, _, _) = gene.variant {
                 if gene.id == id {
                     result = Some(i);
                 }
@@ -367,17 +382,17 @@ pub(crate) mod tests {
         Gene {
             weight: 0.6,
             id: 0,
-            variant: Neuron(0.0, 2)
+            variant: Neuron(0.0, 0.0, 2)
         },
         Gene {
             weight: 0.8,
             id: 1,
-            variant: Neuron(0.0, 2)
+            variant: Neuron(0.0, 0.0, 2)
         },
         Gene {
             weight: 0.9,
             id: 3,
-            variant: Neuron(0.0, 2)
+            variant: Neuron(0.0, 0.0, 2)
         },
         Gene {
             weight: 0.1,
@@ -397,7 +412,7 @@ pub(crate) mod tests {
         Gene {
             weight: 0.2,
             id: 2,
-            variant: Neuron(0.0, 4)
+            variant: Neuron(0.0, 0.0, 4)
         },
         Gene {
             weight: 0.3,
@@ -431,17 +446,17 @@ pub(crate) mod tests {
         Gene {
             weight: 0.6,
             id: 0,
-            variant: Neuron(0.0, 2)
+            variant: Neuron(0.0, 0.0, 2)
         },
         Gene {
             weight: 0.8,
             id: 1,
-            variant: Neuron(0.0, 2)
+            variant: Neuron(0.0, 0.0, 2)
         },
         Gene {
             weight: 0.9,
             id: 3,
-            variant: Neuron(0.0, 2)
+            variant: Neuron(0.0, 0.0, 2)
         },
         Gene {
             weight: 0.1,
@@ -451,7 +466,7 @@ pub(crate) mod tests {
         Gene {
             weight: 0.2,
             id: 4,
-            variant: Neuron(0.0, 1)
+            variant: Neuron(0.0, 0.0, 1)
         },
         Gene {
             weight: 0.3,
@@ -466,7 +481,7 @@ pub(crate) mod tests {
         Gene {
             weight: 0.2,
             id: 2,
-            variant: Neuron(0.0, 4)
+            variant: Neuron(0.0, 0.0, 4)
         },
         Gene {
             weight: 0.3,
@@ -520,5 +535,30 @@ pub(crate) mod tests {
         let output = net.evaluate(&vec![1.0, 1.0]);
         assert_eq!(output.len(), 1);
         assert_eq!(output[0], 0.49488);
+    }
+
+    #[test]
+    fn test_recurrent_previous_value() {
+        let genome = vec![
+            Gene::neuron(1.0, 0, 2),
+            Gene::recurrent(3.0, 1),
+            Gene::neuron(1.0, 1, 1),
+            Gene::bias(1.0),
+        ];
+
+        let mut net = Network{
+            size: genome.len() - 1,
+            genome,
+            function: Activation::Linear,
+        };
+        // The recurrent jumper reads a previous value of zero despite the neuron already being
+        // evaluated by the time the jumper is reached
+        let output = net.evaluate(&[]);
+        assert_eq!(output.len(), 1);
+        assert_eq!(output[0], 1.0);
+
+        // The recurrent jumper now reads a non-zero previous value from the first evaluation
+        let output2 = net.evaluate(&[]);
+        assert_eq!(output2[0], 4.0);
     }
 }

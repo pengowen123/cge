@@ -9,17 +9,17 @@ const TEST_GENOME: [Gene; 12] = [
     Gene {
         weight: 1.0,
         id: 0,
-        variant: Neuron(0.0, 3)
+        variant: Neuron(0.0, 0.0, 3)
     },
     Gene {
         weight: 1.0,
         id: 1,
-        variant: Neuron(0.0, 2)
+        variant: Neuron(0.0, 0.0, 2)
     },
     Gene {
         weight: 1.0,
         id: 3,
-        variant: Neuron(0.0, 2)
+        variant: Neuron(0.0, 0.0, 2)
     },
     Gene {
         weight: 1.0,
@@ -39,7 +39,7 @@ const TEST_GENOME: [Gene; 12] = [
     Gene {
         weight: 1.0,
         id: 2,
-        variant: Neuron(0.0, 4)
+        variant: Neuron(0.0, 0.0, 4)
     },
     Gene {
         weight: 1.0,

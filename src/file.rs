@@ -98,7 +98,7 @@ pub fn to_str(network: &Network) -> String {
             GeneExtras::Input(_) => {
                 data.push_str(&format!("i {} {},", gene.weight, gene.id));
             },
-            GeneExtras::Neuron(_, ref inputs) => {
+            GeneExtras::Neuron(_, _, ref inputs) => {
                 data.push_str(&format!("n {} {} {},", gene.weight, gene.id, *inputs));
             },
             GeneExtras::Forward => {
