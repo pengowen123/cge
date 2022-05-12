@@ -1,11 +1,16 @@
 [package]
 name = "cge"
-version = "0.1.0"
+version = "0.0.1"
 authors = [
     "pengowen123 <pengowen816@gmail.com>",
     "MathisWellmann <wellmannmathis@gmail.com>",
 ]
 edition = "2018"
+description = "An implementation of the Common Genetic Encoding (CGE) for neural networks."
+readme = "README.md"
+license = "GPL-3.0"
+documentation = "https://docs.rs/cge"
+repository = "https://github.com/pengowen123/cge"
 
 [dependencies]
 log = "0.4.11"
