@@ -1,25 +1,136 @@
 //! The neural network struct.
 
-use std::ops::Range;
+use std::ops::{Index, Range};
 use std::io;
+use std::collections::HashMap;
 
 use crate::utils::Stack;
 use crate::file;
 use crate::gene::*;
-use crate::gene::GeneExtras::*;
 use crate::activation::*;
 
-const BIAS_GENE_VALUE: f64 = 1.0;
+/// Info about a neuron in a genome.
+#[derive(Clone, Debug)]
+pub struct NeuronInfo {
+    subgenome_range: Range<usize>,
+    depth: usize,
+}
 
-#[derive(Clone, Debug, PartialEq)]
+impl NeuronInfo {
+    fn new(subgenome_range: Range<usize>, depth: usize) -> Self {
+        Self {
+            subgenome_range,
+            depth,
+        }
+    }
+
+    /// Returns the index range of the subgenome of this neuron.
+    pub fn subgenome_range(&self) -> Range<usize> {
+        self.subgenome_range.clone()
+    }
+
+    /// Returns the depth of this neuron.
+    ///
+    /// This is the number of implicit (non-jumper) connections between this neuron and the
+    /// corresponding output neuron.
+    pub fn depth(&self) -> usize {
+        self.depth
+    }
+}
+
+/// The inputs to a network.
+#[derive(Clone, Copy)]
+struct Inputs<'a>(&'a [f64]);
+
+impl<'a> Index<InputId> for Inputs<'a> {
+    type Output = f64;
+
+    fn index(&self, index: InputId) -> &Self::Output {
+        &self.0[index.as_usize()]
+    }
+}
+
+/// The reason why a genome is invalid.
+#[derive(Clone, Debug)]
+pub enum InvalidNetworkError {
+}
+
+#[derive(Clone, Debug)]
 pub struct Network {
-    // size should be the length of the genome minus one, don't forget
-    pub size: usize,
-    pub genome: Vec<Gene>,
-    pub function: Activation
+    // The genes of the network
+    genome: Vec<Gene>,
+    // The activation function to use for neuron outputs
+    activation: Activation,
+    // The ID to use for the next neuron added to the network
+    next_neuron_id: usize,
+    // Info about each neuron, updated when the genome is changed
+    neuron_info: HashMap<NeuronId, NeuronInfo>,
 }
 
 impl Network {
+    pub fn new(genome: Vec<Gene>, activation: Activation) -> Result<Self, InvalidNetworkError> {
+        let next_neuron_id = 1 + genome.iter().filter_map(|g| if let Gene::Neuron(neuron) = g {
+            Some(neuron.id().as_usize())
+        } else {
+            None
+        }).max().unwrap();
+
+        let mut network =  Self {
+            genome,
+            activation,
+            next_neuron_id,
+            neuron_info: HashMap::new(),
+        };
+
+        let _ = network.validate()?;
+        network.rebuild_neuron_info();
+
+        Ok(network)
+    }
+
+    /// Checks the validity of the network and returns an error if it is invalid.
+    fn validate(&self) -> Result<(), InvalidNetworkError> {
+        // TODO
+        Ok(())
+    }
+
+    /// Rebuilds the internal [`NeuronInfo`] map. Assumes the network to be valid.
+    fn rebuild_neuron_info(&mut self) {
+        // O(n)
+        let mut counter = 0isize;
+        let mut neuron_info = HashMap::new();
+        let mut stopping_points = Vec::new();
+
+        for (i, gene) in self.genome.iter().enumerate() {
+            // Each gene produces one output
+            counter += 1;
+
+            if let Gene::Neuron(neuron) = gene {
+                // Track the value of `counter` when encountering a new subgenome (neuron) so that
+                // the end of the subgenome can be detected and handled
+                // The subgenome's starting index and depth are also added
+                let depth = stopping_points.len();
+                stopping_points.push((counter, neuron.id(), i, depth));
+
+                // Neuron genes consume a number of the following outputs equal to their required
+                // number of inputs
+                counter -= neuron.num_inputs() as isize;
+            } else {
+                // Subgenomes can only end on non-neuron genes
+
+                // Check if `counter` has returned to its value from when any subgenomes started
+                while !stopping_points.is_empty() && stopping_points.last().unwrap().0 == counter {
+                    let (_, id, start_index, depth) = stopping_points.pop().unwrap();
+
+                    let subgenome_range = start_index..i + 1;
+                    neuron_info.insert(id, NeuronInfo::new(subgenome_range, depth));
+                }
+            }
+        }
+
+        self.neuron_info = neuron_info;
+    }
+
     /// Evaluates the neural network with the given inputs, returning a vector of outputs. The encoding can
     /// encode recurrent connections and bias inputs, so an internal state is used. It is important to run
     /// the clear_state method before calling evaluate again, unless it is desired to allow data
@@ -68,28 +179,42 @@ impl Network {
     /// let result_two = adder.evaluate(&[2.0]);
     /// ```
     pub fn evaluate(&mut self, inputs: &[f64]) -> Vec<f64> {
-        self.set_inputs(inputs);
+        let inputs = Inputs(inputs);
+        let length = self.genome.len();
+        let result = evaluate_slice(
+            &mut self.genome,
+            0..length,
+            inputs,
+            false,
+            &self.neuron_info,
+            self.activation
+        );
 
-        let size = self.size;
-        let result = self.evaluate_slice(0..size, true, false);
-
-        self.update_previous_values();
+        // Perform post-evaluation updates/cleanup
+        self.update_stored_values();
 
         result
     }
 
-    /// Clears the internal state of the neural network.
+    /// Clears the persistent state of the neural network.
+    ///
+    /// This state is only used by [`RecurrentJumper`][gene::RecurrentJumper] connections, so
+    /// calling this method is unnecessary if the network does not contain them.
     pub fn clear_state(&mut self) {
         for gene in &mut self.genome {
-            match gene.variant {
-                Input(ref mut current_value) => {
-                    *current_value = 0.0;
-                },
-                Neuron(ref mut current_value, ref mut previous_value, _) => {
-                    *current_value = 0.0;
-                    *previous_value = 0.0;
-                }
-                _ => {}
+            if let Gene::Neuron(neuron) = gene {
+                neuron.set_previous_value(0.0);
+            }
+        }
+    }
+
+    /// Moves the current value stored in each neuron into its previous value.
+    fn update_stored_values(&mut self) {
+        for gene in &mut self.genome {
+            if let Gene::Neuron(neuron) = gene {
+                neuron.set_previous_value(
+                    neuron.current_value().expect("neuron's current value is not set"),
+                );
             }
         }
     }
@@ -132,43 +257,11 @@ impl Network {
     }
 
     /// Saves the neural network to a string. Allows embedding a neural network in source code.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use cge::*;
-    ///
-    /// // Create a neural network
-    /// let network = Network {
-    ///     size: 0,
-    ///     genome: Vec::new(),
-    ///     function: Activation::Sign
-    /// };
-    ///
-    /// // Save the neural network to the string
-    /// let string = network.to_str();
-    /// ```
     pub fn to_str(&self) -> String {
         file::to_str(self)
     }
 
     /// Saves the neural network to a file. Returns an empty tuple on success, or an io error.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use cge::*;
-    ///
-    /// // Create a neural network
-    /// let network = Network {
-    ///     size: 0,
-    ///     genome: Vec::new(),
-    ///     function: Activation::Sign
-    /// };
-    ///
-    /// // Save the neural network to neural_network.ann
-    /// network.save_to_file("neural_network.ann").unwrap();
-    /// ```
     pub fn save_to_file(&self, path: &str) -> io::Result<()> {
         file::write_network(self, path)
     }
@@ -176,200 +269,148 @@ impl Network {
     /// Loads a neural network from a file. No guarantees are made about the validity of the
     /// genome. Returns the network, or an io error. If the file is in a bad format,
     /// `std::io::ErrorKind::InvalidData` is returned.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use cge::Network;
-    ///
-    /// // Loads a neural network from the file neural_network.ann
-    /// let mut network = Network::load_from_file("neural_network.ann").unwrap();
-    /// ```
     pub fn load_from_file(path: &str) -> io::Result<Network> {
         file::read_network(path)
     }
 
-    // Returns the output of sub-linear genome in the given range
-    // The j flag indicates whether or not the last node in the jump forward connection calculation is being evaluated,
-    // in that case, do not include regular connection weight of neuron as this would be incorrect
-    fn evaluate_slice(&mut self, range: Range<usize>, neuron_update: bool, j: bool) -> Vec<f64> {
-        debug!("evaluate_slice in range: {:?}", range);
-
-        let mut gene_index = range.end;
-        // Initialize a stack for evaluating the neural network
-        let mut stack = Stack::new();
-
-        // TODO: activation function for each node
-        let act_func = self.function.get_func();
-
-        // Iterate backwards over the specified slice
-        while gene_index >= range.start {
-            let variant = self.genome[gene_index].variant;
-
-            match variant {
-                Input(_) => {
-                    // If the gene is an input, push its value multiplied by the inputs weight onto
-                    // the stack
-                    let (weight, _, value) = self.genome[gene_index].ref_input().unwrap();
-                    stack.push(weight * value);
-                },
-                Neuron(_, _, _) => {
-                    // If the gene is a neuron, pop a number (the neurons input count) of inputs
-                    // off the stack, and push the transfer function applied to the sum of these
-                    // inputs multiplied by the neurons weight onto the stack
-                    let (weight, _, current_value, _, inputs)
-                        = self.genome[gene_index].ref_mut_neuron().unwrap();
-                    let mut new_value = stack.pop(*inputs)
-                        .expect("A neuron did not receive enough inputs")
-                        .iter()
-                        .fold(0.0, |acc, i| acc + i);
-
-                    // apply the activation function
-                    new_value = (act_func)(new_value);
-
-                    // Store the neuron's current value in order to update the previous value later
-                    if neuron_update {
-                        *current_value = new_value;
-                    }
-
-                    if j && gene_index == range.start {
-                        // when j flag is set,
-                        // do not include weight of last neuron link as jump forward has a different weight
-                        stack.push(new_value);
-                    } else {
-                        // otherwise use regular weight of connection in stack
-                        stack.push(*weight * new_value);
-                    }
-                },
-                Forward => {
-                    // This is inefficient because it can run the neuron evaluation code multiple
-                    // times
-                    // TODO: Turn current value of neurons into a struct with a flag representing
-                    // whether the neuron has been evaluated this network evaluation. Reset this
-                    // flag after every network evaluation.
-
-                    // If the gene is a forward jumper, evaluate the subnetwork starting at the
-                    // neuron with id of the jumper, and push the result multiplied by the jumpers
-                    // weight onto the stack
-                    let weight = self.genome[gene_index].weight;
-                    let id = self.genome[gene_index].id;
-                    let subnetwork_range = self.get_subnetwork_index(id)
-                        .expect("Found forward connection with invalid neuron id");
-
-                    // set j flag to true so the neuron does not include it's regular link weight
-                    // otherwise the values will be off by whatever factor the neuron weight is
-                    let result = self.evaluate_slice(subnetwork_range, false, true);
-
-                    debug!("{:?}", result);
-
-                    stack.push(weight * result[0]);
-                },
-                Recurrent => {
-                    // If the gene is a recurrent jumper, push the previous value of the neuron
-                    // with the id of the jumper multiplied by the jumpers weight onto the stack
-                    let gene = &self.genome[gene_index];
-                    let neuron = &self.genome[self.get_neuron_index(gene.id)
-                        .expect("Found recurrent connection with invalid neuron id")];
-
-                    if let Neuron(_, previous_value, _) = neuron.variant {
-                        stack.push(gene.weight * previous_value);
-                    }
-                },
-                Bias => {
-                    // If the gene is a bias input, push the bias constant multiplied by the genes
-                    // weight onto the stack
-                    let gene = &self.genome[gene_index];
-                    stack.push(gene.weight * BIAS_GENE_VALUE);
-                }
-            }
-
-            if gene_index == range.start {
-                break;
-            }
-
-            gene_index -= 1;
-
-            debug!("{:?}", stack.data);
-        }
-
-        stack.data
+    /// Returns the genome of this `Network`.
+    pub fn genome(&self) -> &[Gene] {
+        &self.genome
     }
 
-    fn update_previous_values(&mut self) {
-        for gene in &mut self.genome {
-            if let Neuron(ref current_value, ref mut previous_value, _) = gene.variant {
-                *previous_value = *current_value;
-            }
-        }
+    /// Returns the activation function of this `Network`.
+    pub fn activation(&self) -> Activation {
+        self.activation
     }
+}
 
-    fn set_inputs(&mut self, inputs: &[f64]) {
-        for gene in &mut self.genome {
-            if let Input(ref mut current_value) = gene.variant {
-                *current_value = 0.0;
+/// Returns the output of the subgenome in the given range.
+///
+/// If `ignore_final_neuron_weight` is `true`, the weight of the final neuron in the subgenome is
+/// ignored.
+fn evaluate_slice(
+    genome: &mut Vec<Gene>,
+    range: Range<usize>,
+    inputs: Inputs,
+    ignore_final_neuron_weight: bool,
+    neuron_info: &HashMap<NeuronId, NeuronInfo>,
+    activation: Activation,
+) -> Vec<f64> {
+    // Initialize a stack for evaluating the neural network
+    let mut stack = Stack::new();
 
-                *current_value = match inputs.get(gene.id) {
-                    Some(v) => *v,
-                    None => 0.0
+    // Iterate backwards over the specified slice
+    for (i, gene_index) in range.enumerate().rev() {
+        let weight;
+        let value;
+
+        if genome[gene_index].is_input() {
+            if let Gene::Input(input) = &genome[gene_index] {
+                // If it is an input gene, push the corresponding input value and the gene's weight
+                // onto the stack
+                weight = input.weight();
+                value = inputs[input.id()];
+            } else {
+                unreachable!();
+            }
+        } else if genome[gene_index].is_neuron() {
+            if let Gene::Neuron(neuron) = &mut genome[gene_index] {
+                // If it is a neuron gene, pop the number of required inputs off the stack, and push
+                // the sum of these inputs passed through the activation function and the gene's
+                // weight onto the stack
+                let sum_inputs = stack.pop(neuron.num_inputs())
+                    .expect("A neuron did not receive enough inputs")
+                    .iter()
+                    .sum();
+
+                // Apply the activation function
+                value = activation.get_func()(sum_inputs);
+
+                // Update the neuron's current value (unweighted)
+                neuron.set_current_value(Some(value));
+
+                if i == 0 && ignore_final_neuron_weight {
+                    // Ignore weight for the final neuron in the genome if the flag is set
+                    weight = 1.0;
+                } else {
+                    weight = neuron.weight();
                 }
+            } else {
+                unreachable!();
             }
-        }
-    }
+        } else if genome[gene_index].is_forward_jumper() {
+            // If it is a forward jumper gene, evaluate the subgenome of the source neuron and
+            // push its output and the gene's weight onto the stack
+            let source_subgenome_range;
 
-    /// Returns the start and end index of the subnetwork starting at the neuron with the given id,
-    /// or None if it does not exist.
-    pub fn get_subnetwork_index(&self, id: usize) -> Option<Range<usize>> {
-        let start = match self.get_neuron_index(id) {
-            Some(i) => i,
-            None => return None
-        };
+            if let Gene::ForwardJumper(forward) = &genome[gene_index] {
+                source_subgenome_range = neuron_info[&forward.source_id()].subgenome_range();
+                weight = forward.weight();
+            } else {
+                unreachable!();
+            }
 
-        let mut end = start;
-        let mut sum = 0;
+            let subgenome_root = match &genome[source_subgenome_range.start] {
+                Gene::Neuron(neuron) => neuron,
+                _ => panic!("forward jumper source is not a neuron"),
+            };
 
-        // Iterate through genes after the start index, modifying the sum each step
-        // I could use an iterator here, but it would be messy
-        for gene in &self.genome[start..self.size + 1] {
-            match gene.variant {
-                Neuron(_, _, ref inputs) => {
-                    sum += 1 - *inputs as i32;
-                },
-                _ => {
-                    sum += 1;
+            let subgenome_output = if let Some(cached) = subgenome_root.current_value() {
+                cached
+            } else {
+                // NOTE: This is somewhat inefficient because it can run the neuron evaluation code
+                //       up to two times (once in this subcall to evaluate_slice and once in the
+                //       main evaluate_slice call) depending on the genome order
+                //       Also, the call stack may grow in proportion to the genome length in the
+                //       worst case (exactly reversed execution order of a chain of forward
+                //       jumpers)
+                //       Both of these could probably be fixed with a smart iteration solution
+                //       instead of recursion, or if a graph structure is used to form a strict
+                //       ordering of evaluation
+                evaluate_slice(
+                    genome,
+                    source_subgenome_range,
+                    inputs,
+                    true,
+                    neuron_info,
+                    activation,
+                )[0]
+            };
+
+            value = subgenome_output;
+        } else if genome[gene_index].is_recurrent_jumper() {
+            if let Gene::RecurrentJumper(recurrent) = &genome[gene_index] {
+                // If it is a recurrent jumper gene, push the previous value of the source neuron
+                // and the gene's weight onto the stack
+                let index = neuron_info[&recurrent.source_id()].subgenome_range().start;
+                let source_gene = &genome[index];
+
+                weight = recurrent.weight();
+                if let Gene::Neuron(neuron) = source_gene {
+                    value = neuron.previous_value();
+                } else {
+                    panic!("recurrent jumper did not point to a neuron");
                 }
+            } else {
+                unreachable!();
             }
-
-            if sum == 1 {
-                break;
+        } else if genome[gene_index].is_bias() {
+            if let Gene::Bias(bias) = &genome[gene_index] {
+                // If it is a bias gene, push 1.0 and the gene's weight onto the stack
+                weight = bias.value();
+                value = 1.0;
+            } else {
+                unreachable!();
             }
-
-            end += 1;
-        }
-
-        if sum != 1 {
-            None
         } else {
-            Some(Range {
-                start,
-                end
-            })
-        }
-    }
-
-    /// Returns the index of the neuron with the given id, or None if it does not exist.
-    pub fn get_neuron_index(&self, id: usize) -> Option<usize> {
-        let mut result = None;
-
-        for (i, gene) in self.genome.iter().enumerate() {
-            if let Neuron(_, _, _) = gene.variant {
-                if gene.id == id {
-                    result = Some(i);
-                }
-            }
+            unreachable!();
         }
 
-        result
+        // Push the weighted value onto the stack
+        stack.push(weight * value);
     }
+
+    stack.data
 }
 
 #[cfg(test)]
@@ -378,63 +419,7 @@ pub(crate) mod tests {
 
     // linear genome from fig. 5.3 in paper:
     // https://www.researchgate.net/profile/Yohannes_Kassahun/publication/266864021_Towards_a_Unified_Approach_to_Learning_and_Adaptation/links/54ba91790cf253b50e2d037d.pdf?origin=publication_detail
-    pub(crate) const TEST_GENOME: [Gene; 11] = [
-        Gene {
-            weight: 0.6,
-            id: 0,
-            variant: Neuron(0.0, 0.0, 2)
-        },
-        Gene {
-            weight: 0.8,
-            id: 1,
-            variant: Neuron(0.0, 0.0, 2)
-        },
-        Gene {
-            weight: 0.9,
-            id: 3,
-            variant: Neuron(0.0, 0.0, 2)
-        },
-        Gene {
-            weight: 0.1,
-            id: 0,
-            variant: Input(0.0)
-        },
-        Gene {
-            weight: 0.4,
-            id: 1,
-            variant: Input(0.0)
-        },
-        Gene {
-            weight: 0.5,
-            id: 1,
-            variant: Input(0.0)
-        },
-        Gene {
-            weight: 0.2,
-            id: 2,
-            variant: Neuron(0.0, 0.0, 4)
-        },
-        Gene {
-            weight: 0.3,
-            id: 3,
-            variant: Forward
-        },
-        Gene {
-            weight: 0.7,
-            id: 0,
-            variant: Input(0.0)
-        },
-        Gene {
-            weight: 0.8,
-            id: 1,
-            variant: Input(0.0)
-        },
-        Gene {
-            weight: 0.2,
-            id: 0,
-            variant: Recurrent
-        },
-    ];
+    const TEST_GENOME: &'static str = "0: n 0.6 0 2,n 0.8 1 2,n 0.9 3 2,i 0.1 0,i 0.4 1,i 0.5 1,n 0.2 2 4,f 0.3 3,i 0.7 0,i 0.8 1,r 0.2 0";
 
     // This genome has one more neuron than TEST_GENOME
     // It is placed between neuron 3 and input id 1 by splitting one connection into two
@@ -442,80 +427,11 @@ pub(crate) mod tests {
     // The link weight connecting neuron 3 and 4 is 0.2,
     // The link weight connecting neuron 4 and input 1 is 0.3
     // removed original connection gene from neuron 3 to input 1
-    const TEST_GENOME_2: [Gene; 12] = [
-        Gene {
-            weight: 0.6,
-            id: 0,
-            variant: Neuron(0.0, 0.0, 2)
-        },
-        Gene {
-            weight: 0.8,
-            id: 1,
-            variant: Neuron(0.0, 0.0, 2)
-        },
-        Gene {
-            weight: 0.9,
-            id: 3,
-            variant: Neuron(0.0, 0.0, 2)
-        },
-        Gene {
-            weight: 0.1,
-            id: 0,
-            variant: Input(0.0)
-        },
-        Gene {
-            weight: 0.2,
-            id: 4,
-            variant: Neuron(0.0, 0.0, 1)
-        },
-        Gene {
-            weight: 0.3,
-            id: 1,
-            variant: Input(0.0)
-        },
-        Gene {
-            weight: 0.5,
-            id: 1,
-            variant: Input(0.0)
-        },
-        Gene {
-            weight: 0.2,
-            id: 2,
-            variant: Neuron(0.0, 0.0, 4)
-        },
-        Gene {
-            weight: 0.3,
-            id: 3,
-            variant: Forward
-        },
-        Gene {
-            weight: 0.7,
-            id: 0,
-            variant: Input(0.0)
-        },
-        Gene {
-            weight: 0.8,
-            id: 1,
-            variant: Input(0.0)
-        },
-        Gene {
-            weight: 0.2,
-            id: 0,
-            variant: Recurrent
-        },
-    ];
+    const TEST_GENOME_2: &'static str = "0: n 0.6 0 2,n 0.8 1 2,n 0.9 3 2,i 0.1 0,n 0.2 4 1,i 0.3 1,i 0.5 1,n 0.2 2 4,f 0.3 3,i 0.7 0,i 0.8 1,r 0.2 0";
 
     #[test]
     fn test_genome_is_correct() {
-        if let Err(_) = pretty_env_logger::try_init() {
-            // ignore error due to it being already initialized
-        };
-
-        let mut net = Network{
-            size: TEST_GENOME.len() - 1,
-            genome: TEST_GENOME.to_vec(),
-            function: Activation::Linear
-        };
+        let mut net = Network::from_str(TEST_GENOME).unwrap();
         let output = net.evaluate(&vec![1.0, 1.0]);
         assert_eq!(output.len(), 1);
         assert_eq!(output[0], 0.654);
@@ -523,15 +439,7 @@ pub(crate) mod tests {
 
     #[test]
     fn jump_recurrent_is_correct() {
-        if let Err(_) = pretty_env_logger::try_init() {
-            // ignore error due to it being already initialized
-        };
-
-        let mut net = Network{
-            size: TEST_GENOME_2.len() - 1,
-            genome: TEST_GENOME_2.to_vec(),
-            function: Activation::Linear,
-        };
+        let mut net = Network::from_str(TEST_GENOME_2).unwrap();
         let output = net.evaluate(&vec![1.0, 1.0]);
         assert_eq!(output.len(), 1);
         assert_eq!(output[0], 0.49488);
@@ -539,18 +447,9 @@ pub(crate) mod tests {
 
     #[test]
     fn test_recurrent_previous_value() {
-        let genome = vec![
-            Gene::neuron(1.0, 0, 2),
-            Gene::recurrent(3.0, 1),
-            Gene::neuron(1.0, 1, 1),
-            Gene::bias(1.0),
-        ];
+        let genome = "0: n 1.0 0 2,r 3.0 1,n 1.0 1 1,b 1.0";
 
-        let mut net = Network{
-            size: genome.len() - 1,
-            genome,
-            function: Activation::Linear,
-        };
+        let mut net = Network::from_str(genome).unwrap();
         // The recurrent jumper reads a previous value of zero despite the neuron already being
         // evaluated by the time the jumper is reached
         let output = net.evaluate(&[]);

@@ -14,7 +14,7 @@ pub fn from_str(string: &str) -> Option<Network> {
         return None;
     }
 
-    let function = if let Ok(v) = parts[0].parse() {
+    let activation = if let Ok(v) = parts[0].parse() {
         Activation::from_i32(v)
     } else {
         return None;
@@ -23,7 +23,7 @@ pub fn from_str(string: &str) -> Option<Network> {
     let string = parts[1];
 
     let genes = string.split(",");
-    let mut genome = Vec::new();
+    let mut genome: Vec<Gene> = Vec::new();
 
     for gene in genes {
         let gene = gene.split_whitespace().collect::<Vec<&str>>();
@@ -32,83 +32,99 @@ pub fn from_str(string: &str) -> Option<Network> {
             return None;
         }
 
-        match gene[0] { 
+        let new_gene;
+
+        match gene[0] {
             "n" => {
                 if gene.len() != 4 {
                     return None;
                 }
 
-                genome.push(Gene::neuron(gene[1].parse::<f64>().unwrap(),
-                                         gene[2].parse::<usize>().unwrap(),
-                                         gene[3].parse::<usize>().unwrap()));
+                let weight = gene[1].parse::<f64>().unwrap();
+                let id = gene[2].parse::<usize>().unwrap();
+                let inputs = gene[3].parse::<usize>().unwrap();
+                let neuron = Neuron::new(NeuronId::new(id), inputs, weight);
+                new_gene = neuron.into();
             },
             "i" => {
                 if gene.len() != 3 {
                     return None;
                 }
 
-                genome.push(Gene::input(gene[1].parse::<f64>().unwrap(),
-                                        gene[2].parse::<usize>().unwrap()));
+                let weight = gene[1].parse::<f64>().unwrap();
+                let input_id = gene[2].parse::<usize>().unwrap();
+                let input = Input::new(InputId::new(input_id), weight);
+                new_gene = input.into();
             },
             "f" => {
                 if gene.len() != 3 {
                     return None;
                 }
 
-                genome.push(Gene::forward(gene[1].parse::<f64>().unwrap(),
-                                          gene[2].parse::<usize>().unwrap()));
+                let weight = gene[1].parse::<f64>().unwrap();
+                let source_id = gene[2].parse::<usize>().unwrap();
+                let forward = ForwardJumper::new(NeuronId::new(source_id), weight);
+                new_gene = forward.into();
             },
             "r" => {
                 if gene.len() != 3 {
                     return None;
                 }
 
-                genome.push(Gene::recurrent(gene[1].parse::<f64>().unwrap(),
-                                            gene[2].parse::<usize>().unwrap()));
+                let weight = gene[1].parse::<f64>().unwrap();
+                let source_id = gene[2].parse::<usize>().unwrap();
+                let recurrent = RecurrentJumper::new(NeuronId::new(source_id), weight);
+                new_gene = recurrent.into();
             },
             "b" => {
                 if gene.len() != 2 {
                     return None;
                 }   
-                
-                genome.push(Gene::bias(gene[1].parse::<f64>().unwrap()));
+
+                let value = gene[1].parse::<f64>().unwrap();
+                let bias = Bias::new(value);
+                new_gene = bias.into();
             },
             _ => {
                 return None;
             }
         }
+
+        genome.push(new_gene);
     }
 
     if genome.is_empty() {
         return None;
     }
 
-    Some(Network {
-        size: genome.len() - 1,
-        genome,
-        function
-    })
+    Some(Network::new(genome, activation).unwrap())
 }
 
 pub fn to_str(network: &Network) -> String {
-    let mut data = format!("{}: ", network.function as i32);
+    let mut data = format!("{}: ", network.activation() as i32);
 
-    for gene in &network.genome {
-        match gene.variant {
-            GeneExtras::Input(_) => {
-                data.push_str(&format!("i {} {},", gene.weight, gene.id));
+    for gene in network.genome() {
+        match gene {
+            Gene::Input(input) => {
+                data.push_str(&format!("i {} {},", input.weight(), input.id().as_usize()));
             },
-            GeneExtras::Neuron(_, _, ref inputs) => {
-                data.push_str(&format!("n {} {} {},", gene.weight, gene.id, *inputs));
+            Gene::Neuron(neuron) => {
+                data.push_str(
+                    &format!("n {} {} {},", neuron.weight(), neuron.id().as_usize(), neuron.num_inputs())
+                );
             },
-            GeneExtras::Forward => {
-                data.push_str(&format!("f {} {},", gene.weight, gene.id));
+            Gene::ForwardJumper(forward) => {
+                data.push_str(
+                    &format!("f {} {},", forward.weight(), forward.source_id().as_usize())
+                );
             },
-            GeneExtras::Recurrent => {
-                data.push_str(&format!("r {} {},", gene.weight, gene.id));
+            Gene::RecurrentJumper(recurrent) => {
+                data.push_str(
+                    &format!("r {} {},", recurrent.weight(), recurrent.source_id().as_usize())
+                );
             },
-            GeneExtras::Bias => {
-                data.push_str(&format!("b {},", gene.weight));
+            Gene::Bias(bias) => {
+                data.push_str(&format!("b {},", bias.value()));
             }
         }
     }
