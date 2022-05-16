@@ -53,6 +53,17 @@ impl<'a> Index<InputId> for Inputs<'a> {
 /// The reason why a genome is invalid.
 #[derive(Clone, Debug)]
 pub enum InvalidNetworkError {
+    /// The genome is empty.
+    EmptyGenome,
+    /// A neuron has an input count of zero. Contains the index and id of the neuron gene.
+    InvalidInputCount(usize, NeuronId),
+    /// A neuron does not receive enough inputs. Contains the index and id of the neuron gene.
+    NotEnoughInputs(usize, NeuronId),
+    /// A non-neuron gene is an output of the network. Contains the index of the gene.
+    NonNeuronOutput(usize),
+    /// A forward jumper connection's parent neuron does not have a lesser depth than its source
+    /// neuron. Contains the index of the forward jumper gene.
+    InvalidForwardJumper(usize),
 }
 
 #[derive(Clone, Debug)]
@@ -82,26 +93,29 @@ impl Network {
             neuron_info: HashMap::new(),
         };
 
-        let _ = network.validate()?;
-        network.rebuild_neuron_info();
+        network.rebuild_neuron_info()?;
 
         Ok(network)
     }
 
-    /// Checks the validity of the network and returns an error if it is invalid.
-    fn validate(&self) -> Result<(), InvalidNetworkError> {
-        // TODO
-        Ok(())
-    }
-
-    /// Rebuilds the internal [`NeuronInfo`] map. Assumes the network to be valid.
-    fn rebuild_neuron_info(&mut self) {
+    /// Rebuilds the internal [`NeuronInfo`] map and checks the validity of the genome.
+    fn rebuild_neuron_info(&mut self) -> Result<(), InvalidNetworkError> {
         // O(n)
+        if self.genome.is_empty() {
+            return Err(InvalidNetworkError::EmptyGenome);
+        }
+
         let mut counter = 0isize;
         let mut neuron_info = HashMap::new();
+        // Represents a stack of the current subgenomes being traversed
+        // The value at the top of the stack when encountering a gene is that gene's parent
         let mut stopping_points = Vec::new();
+        // A list of (jumper index, parent depth, source id) to check the validity of all forward
+        // jumpers after `neuron_info` is completed
+        let mut forward_jumper_checks = Vec::new();
 
         for (i, gene) in self.genome.iter().enumerate() {
+            let depth = stopping_points.len();
             // Each gene produces one output
             counter += 1;
 
@@ -109,14 +123,29 @@ impl Network {
                 // Track the value of `counter` when encountering a new subgenome (neuron) so that
                 // the end of the subgenome can be detected and handled
                 // The subgenome's starting index and depth are also added
-                let depth = stopping_points.len();
                 stopping_points.push((counter, neuron.id(), i, depth));
+
+                // All neurons must have at least one input
+                if neuron.num_inputs() == 0 {
+                    return Err(InvalidNetworkError::InvalidInputCount(i, neuron.id()))
+                }
 
                 // Neuron genes consume a number of the following outputs equal to their required
                 // number of inputs
                 counter -= neuron.num_inputs() as isize;
             } else {
                 // Subgenomes can only end on non-neuron genes
+
+                // Non-neuron genes must have a parent because they cannot be network outputs
+                if stopping_points.is_empty() {
+                    return Err(InvalidNetworkError::NonNeuronOutput(i))
+                }
+
+                // Add forward jumper info to be checked later
+                if let Gene::ForwardJumper(forward) = gene {
+                    let parent_depth = depth - 1;
+                    forward_jumper_checks.push((i, parent_depth, forward.source_id()));
+                }
 
                 // Check if `counter` has returned to its value from when any subgenomes started
                 while !stopping_points.is_empty() && stopping_points.last().unwrap().0 == counter {
@@ -128,7 +157,22 @@ impl Network {
             }
         }
 
+        // If any subgenomes were not fully traversed, a neuron did not receive enough inputs
+        if let Some(&(_, id, index, _)) = stopping_points.last() {
+            return Err(InvalidNetworkError::NotEnoughInputs(index, id));
+        }
+
+        // Check that forward jumpers always connect parent neurons to source neurons of higher
+        // depth
+        for (jumper_index, parent_depth, source_id) in forward_jumper_checks {
+            if parent_depth >= neuron_info[&source_id].depth() {
+                return Err(InvalidNetworkError::InvalidForwardJumper(jumper_index));
+            }
+        }
+
         self.neuron_info = neuron_info;
+
+        Ok(())
     }
 
     /// Evaluates the neural network with the given inputs, returning a vector of outputs. The encoding can
