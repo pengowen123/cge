@@ -116,12 +116,6 @@ impl Neuron {
         }
     }
 
-    /// Like [`new`][Self::new], but uses a default id. This can be used when adding a new neuron to
-    /// an existing network, as specifying an id is unnecessary in that case.
-    pub fn without_id(num_inputs: usize, weight: f64) -> Self {
-        Self::new(NeuronId::new(0), num_inputs, weight)
-    }
-
     /// Returns the id of this `Neuron`.
     pub fn id(&self) -> NeuronId {
         self.id

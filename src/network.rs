@@ -55,10 +55,12 @@ impl<'a> Index<InputId> for Inputs<'a> {
 pub enum InvalidNetworkError {
     /// The genome is empty.
     EmptyGenome,
-    /// A neuron has an input count of zero. Contains the index and id of the neuron gene.
+    /// A neuron has an input count of zero. Contains the index and ID of the neuron gene.
     InvalidInputCount(usize, NeuronId),
-    /// A neuron does not receive enough inputs. Contains the index and id of the neuron gene.
+    /// A neuron does not receive enough inputs. Contains the index and ID of the neuron gene.
     NotEnoughInputs(usize, NeuronId),
+    /// Two or more neurons share the same ID. Contains the indices of the duplicates and their ID.
+    DuplicateNeuronId(usize, usize, NeuronId),
     /// A non-neuron gene is an output of the network. Contains the index of the gene.
     NonNeuronOutput(usize),
     /// A forward jumper connection's parent neuron does not have a lesser depth than its source
@@ -84,11 +86,14 @@ pub struct Network {
 
 impl Network {
     pub fn new(genome: Vec<Gene>, activation: Activation) -> Result<Self, InvalidNetworkError> {
-        let next_neuron_id = 1 + genome.iter().filter_map(|g| if let Gene::Neuron(neuron) = g {
+        let next_neuron_id = genome.iter().filter_map(|g| if let Gene::Neuron(neuron) = g {
             Some(neuron.id().as_usize())
         } else {
             None
-        }).max().unwrap();
+        })
+        .max()
+        .map(|id| id + 1)
+        .unwrap_or(0);
 
         let mut network =  Self {
             genome,
@@ -113,7 +118,7 @@ impl Network {
         }
 
         let mut counter = 0isize;
-        let mut neuron_info = HashMap::new();
+        let mut neuron_info: HashMap<NeuronId, NeuronInfo> = HashMap::new();
         // Represents a stack of the current subgenomes being traversed
         // The value at the top of the stack when encountering a gene is that gene's parent
         let mut stopping_points = Vec::new();
@@ -158,6 +163,13 @@ impl Network {
                 // Check if `counter` has returned to its value from when any subgenomes started
                 while !stopping_points.is_empty() && stopping_points.last().unwrap().0 == counter {
                     let (_, id, start_index, depth) = stopping_points.pop().unwrap();
+
+                    if let Some(existing) = neuron_info.get(&id) {
+                        let existing_index = existing.subgenome_range().start;
+                        return Err(
+                            InvalidNetworkError::DuplicateNeuronId(existing_index, start_index, id)
+                        );
+                    }
 
                     let subgenome_range = start_index..i + 1;
                     neuron_info.insert(id, NeuronInfo::new(subgenome_range, depth));
