@@ -68,6 +68,10 @@ pub enum InvalidNetworkError {
     InvalidForwardJumper(usize),
 }
 
+/// Too few inputs were passed to [`Network::evaluate`].
+#[derive(Clone, Debug)]
+pub struct NotEnoughInputsError;
+
 #[derive(Clone, Debug)]
 pub struct Network {
     // The genes of the network
@@ -221,36 +225,40 @@ impl Network {
     /// let mut network = Network::load_from_file("neural_network.ann").unwrap();
     ///
     /// // Get the output of the neural network the the specified inputs
-    /// let result = network.evaluate(&vec![1.0, 1.0]);
+    /// let result = network.evaluate(&vec![1.0, 1.0]).unwrap();
     ///
     /// // Get the output of the neural network with no inputs
-    /// let result = network.evaluate(&[]);
+    /// let result = network.evaluate(&[]).unwrap();
     ///
     /// // Get the output of the neural network with too many inputs (extras aren't used)
-    /// let result = network.evaluate(&[1.0, 1.0, 1.0]);
+    /// let result = network.evaluate(&[1.0, 1.0, 1.0]).unwrap();
     /// 
     /// // Let's say adder.ann is a file with a neural network with recurrent connections, used for
     /// // adding numbers together.
     /// let mut adder = Network::load_from_file("adder.ann").unwrap();
     ///
     /// // result_one will be 1.0
-    /// let result_one = adder.evaluate(&[1.0]);
+    /// let result_one = adder.evaluate(&[1.0]).unwrap();
     ///
     /// // result_two will be 3.0
-    /// let result_two = adder.evaluate(&[2.0]);
+    /// let result_two = adder.evaluate(&[2.0]).unwrap();
     ///
     /// // result_three will be 5.0
-    /// let result_three = adder.evaluate(&[2.0]);
+    /// let result_three = adder.evaluate(&[2.0]).unwrap();
     ///
     /// // If this behavior is not desired, call the clear_state method between evaluations:
-    /// let result_one = adder.evaluate(&[1.0]);
+    /// let result_one = adder.evaluate(&[1.0]).unwrap();
     ///
     /// adder.clear_state();
     ///
     /// // The 1.0 from the previous call is gone, so result_two will be 2.0
-    /// let result_two = adder.evaluate(&[2.0]);
+    /// let result_two = adder.evaluate(&[2.0]).unwrap();
     /// ```
-    pub fn evaluate(&mut self, inputs: &[f64]) -> Vec<f64> {
+    pub fn evaluate(&mut self, inputs: &[f64]) -> Result<Vec<f64>, NotEnoughInputsError> {
+        if inputs.len() < self.num_inputs {
+            return Err(NotEnoughInputsError);
+        }
+
         let inputs = Inputs(inputs);
         let length = self.genome.len();
         let result = evaluate_slice(
@@ -265,7 +273,7 @@ impl Network {
         // Perform post-evaluation updates/cleanup
         self.update_stored_values();
 
-        result
+        Ok(result)
     }
 
     /// Clears the persistent state of the neural network.
@@ -518,7 +526,7 @@ pub(crate) mod tests {
     #[test]
     fn test_genome_is_correct() {
         let mut net = Network::from_str(TEST_GENOME).unwrap();
-        let output = net.evaluate(&vec![1.0, 1.0]);
+        let output = net.evaluate(&vec![1.0, 1.0]).unwrap();
         assert_eq!(output.len(), 1);
         assert_eq!(output[0], 0.654);
     }
@@ -526,7 +534,7 @@ pub(crate) mod tests {
     #[test]
     fn jump_recurrent_is_correct() {
         let mut net = Network::from_str(TEST_GENOME_2).unwrap();
-        let output = net.evaluate(&vec![1.0, 1.0]);
+        let output = net.evaluate(&vec![1.0, 1.0]).unwrap();
         assert_eq!(output.len(), 1);
         assert_eq!(output[0], 0.49488);
     }
@@ -538,12 +546,12 @@ pub(crate) mod tests {
         let mut net = Network::from_str(genome).unwrap();
         // The recurrent jumper reads a previous value of zero despite the neuron already being
         // evaluated by the time the jumper is reached
-        let output = net.evaluate(&[]);
+        let output = net.evaluate(&[]).unwrap();
         assert_eq!(output.len(), 1);
         assert_eq!(output[0], 1.0);
 
         // The recurrent jumper now reads a non-zero previous value from the first evaluation
-        let output2 = net.evaluate(&[]);
+        let output2 = net.evaluate(&[]).unwrap();
         assert_eq!(output2[0], 4.0);
     }
 }

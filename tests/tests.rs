@@ -9,7 +9,7 @@ fn test_network_eval() {
     let mut network = Network::from_str(TEST_GENOME).unwrap();
 
     let inputs = [1.0, 1.0];
-    let result = network.evaluate(&inputs);
+    let result = network.evaluate(&inputs).unwrap();
 
     assert_eq!(result.len(), 1);
     assert_eq!(result[0], 8.0);
