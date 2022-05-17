@@ -76,6 +76,10 @@ pub struct Network {
     next_neuron_id: usize,
     // Info about each neuron, updated when the genome is changed
     neuron_info: HashMap<NeuronId, NeuronInfo>,
+    // The number of inputs required by the network
+    num_inputs: usize,
+    // The number of network outputs
+    num_outputs: usize,
 }
 
 impl Network {
@@ -91,15 +95,18 @@ impl Network {
             activation,
             next_neuron_id,
             neuron_info: HashMap::new(),
+            num_inputs: 0,
+            num_outputs: 0,
         };
 
-        network.rebuild_neuron_info()?;
+        network.rebuild_network_metadata()?;
 
         Ok(network)
     }
 
-    /// Rebuilds the internal [`NeuronInfo`] map and checks the validity of the genome.
-    fn rebuild_neuron_info(&mut self) -> Result<(), InvalidNetworkError> {
+    /// Rebuilds the internal [`NeuronInfo`] map and other network metadata and checks the validity
+    /// of the genome.
+    fn rebuild_network_metadata(&mut self) -> Result<(), InvalidNetworkError> {
         // O(n)
         if self.genome.is_empty() {
             return Err(InvalidNetworkError::EmptyGenome);
@@ -113,6 +120,7 @@ impl Network {
         // A list of (jumper index, parent depth, source id) to check the validity of all forward
         // jumpers after `neuron_info` is completed
         let mut forward_jumper_checks = Vec::new();
+        let mut max_input_id = None;
 
         for (i, gene) in self.genome.iter().enumerate() {
             let depth = stopping_points.len();
@@ -154,6 +162,11 @@ impl Network {
                     let subgenome_range = start_index..i + 1;
                     neuron_info.insert(id, NeuronInfo::new(subgenome_range, depth));
                 }
+
+                if let Gene::Input(input) = gene {
+                    max_input_id =
+                        max_input_id.or(Some(0)).map(|max_id| max_id.max(input.id().as_usize()));
+                }
             }
         }
 
@@ -171,6 +184,9 @@ impl Network {
         }
 
         self.neuron_info = neuron_info;
+        // + 1 because input IDs start at zero, 0 if no IDs were found
+        self.num_inputs = max_input_id.map(|id| id + 1).unwrap_or(0);
+        self.num_outputs = counter as usize;
 
         Ok(())
     }
@@ -325,6 +341,20 @@ impl Network {
     /// Returns the activation function of this `Network`.
     pub fn activation(&self) -> Activation {
         self.activation
+    }
+
+    /// Returns the number of inputs required by this `Network`.
+    ///
+    /// This is equal to one plus the highest input ID among [`Input`] genes in the network, which
+    /// means that any unused IDs in the range `0..num_inputs` will correspond to unused values in
+    /// the input array to [`evaluate`][Self::evaluate].
+    pub fn num_inputs(&self) -> usize {
+        self.num_inputs
+    }
+
+    /// Returns the number of outputs produced by this `Network` when evaluated.
+    pub fn num_outputs(&self) -> usize {
+        self.num_outputs
     }
 }
 
