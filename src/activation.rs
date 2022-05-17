@@ -91,9 +91,5 @@ pub fn bent_identity(x: f64) -> f64 {
 
 /// rectified linear unit
 pub fn relu(x: f64) -> f64 {
-    return if x > 0.0 {
-        x
-    } else {
-        0.0
-    }
+    return if x > 0.0 { x } else { 0.0 };
 }

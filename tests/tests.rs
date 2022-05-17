@@ -1,5 +1,3 @@
-extern crate cge;
-
 use cge::Network;
 
 const TEST_GENOME: &'static str = "0: n 1.0 0 3,n 1.0 1 2,n 1.0 3 2,i 1.0 0,i 1.0 1,i 1.0 1,n 1.0 2 4,f 1.0 3,i 1.0 0,i 1.0 1,r 1.0 0,b 1.0";

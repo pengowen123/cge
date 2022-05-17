@@ -11,9 +11,7 @@ pub struct Bias {
 impl Bias {
     /// Returns a new `Bias` that adds a constant `value` to the network.
     pub fn new(value: f64) -> Self {
-        Self {
-            value,
-        }
+        Self { value }
     }
 
     /// Returns the value of the `Bias`.
@@ -50,10 +48,7 @@ impl Input {
     /// Returns a new `Input` that connects to the network input with the id and weights it by
     /// `weight`.
     pub fn new(id: InputId, weight: f64) -> Self {
-        Self {
-            id,
-            weight,
-        }
+        Self { id, weight }
     }
 
     /// Returns the id of the network input this `Input` refers to.
@@ -106,7 +101,7 @@ impl Neuron {
     ///
     /// If specifying the neuron id is unnecessary (i.e., when adding a new one to a network),
     /// [`without_id`][Self::without_id] can be used instead.
-    pub fn new(id: NeuronId, num_inputs: usize, weight: f64,) -> Self {
+    pub fn new(id: NeuronId, num_inputs: usize, weight: f64) -> Self {
         Self {
             id,
             num_inputs,
@@ -165,10 +160,7 @@ impl ForwardJumper {
     /// Returns a new `ForwardJumper` that connects to the output of the neuron with the id and
     /// weights it by `weight`.
     pub fn new(source_id: NeuronId, weight: f64) -> Self {
-        Self {
-            source_id,
-            weight,
-        }
+        Self { source_id, weight }
     }
 
     /// Returns the id of the source neuron of this `ForwardJumper`.
@@ -199,10 +191,7 @@ impl RecurrentJumper {
     /// Returns a new `RecurrentJumper` that connects to the output of the neuron with the id and
     /// weights it by `weight`.
     pub fn new(source_id: NeuronId, weight: f64) -> Self {
-        Self {
-            source_id,
-            weight,
-        }
+        Self { source_id, weight }
     }
 
     /// Returns the id of the source neuron of this `ForwardJumper`.

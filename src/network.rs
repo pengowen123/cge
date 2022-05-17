@@ -1,13 +1,13 @@
 //! The neural network struct.
 
-use std::ops::{Index, Range};
-use std::io;
 use std::collections::HashMap;
+use std::io;
+use std::ops::{Index, Range};
 
-use crate::utils::Stack;
+use crate::activation::*;
 use crate::file;
 use crate::gene::*;
-use crate::activation::*;
+use crate::utils::Stack;
 
 /// Info about a neuron in a genome.
 #[derive(Clone, Debug)]
@@ -90,16 +90,20 @@ pub struct Network {
 
 impl Network {
     pub fn new(genome: Vec<Gene>, activation: Activation) -> Result<Self, InvalidNetworkError> {
-        let next_neuron_id = genome.iter().filter_map(|g| if let Gene::Neuron(neuron) = g {
-            Some(neuron.id().as_usize())
-        } else {
-            None
-        })
-        .max()
-        .map(|id| id + 1)
-        .unwrap_or(0);
+        let next_neuron_id = genome
+            .iter()
+            .filter_map(|g| {
+                if let Gene::Neuron(neuron) = g {
+                    Some(neuron.id().as_usize())
+                } else {
+                    None
+                }
+            })
+            .max()
+            .map(|id| id + 1)
+            .unwrap_or(0);
 
-        let mut network =  Self {
+        let mut network = Self {
             genome,
             activation,
             next_neuron_id,
@@ -144,7 +148,7 @@ impl Network {
 
                 // All neurons must have at least one input
                 if neuron.num_inputs() == 0 {
-                    return Err(InvalidNetworkError::InvalidInputCount(i, neuron.id()))
+                    return Err(InvalidNetworkError::InvalidInputCount(i, neuron.id()));
                 }
 
                 // Neuron genes consume a number of the following outputs equal to their required
@@ -155,7 +159,7 @@ impl Network {
 
                 // Non-neuron genes must have a parent because they cannot be network outputs
                 if stopping_points.is_empty() {
-                    return Err(InvalidNetworkError::NonNeuronOutput(i))
+                    return Err(InvalidNetworkError::NonNeuronOutput(i));
                 }
 
                 // Add forward jumper info to be checked later
@@ -170,9 +174,11 @@ impl Network {
 
                     if let Some(existing) = neuron_info.get(&id) {
                         let existing_index = existing.subgenome_range().start;
-                        return Err(
-                            InvalidNetworkError::DuplicateNeuronId(existing_index, start_index, id)
-                        );
+                        return Err(InvalidNetworkError::DuplicateNeuronId(
+                            existing_index,
+                            start_index,
+                            id,
+                        ));
                     }
 
                     let subgenome_range = start_index..i + 1;
@@ -180,8 +186,9 @@ impl Network {
                 }
 
                 if let Gene::Input(input) = gene {
-                    max_input_id =
-                        max_input_id.or(Some(0)).map(|max_id| max_id.max(input.id().as_usize()));
+                    max_input_id = max_input_id
+                        .or(Some(0))
+                        .map(|max_id| max_id.max(input.id().as_usize()));
                 }
             }
         }
@@ -207,12 +214,12 @@ impl Network {
         Ok(())
     }
 
-    /// Evaluates the neural network with the given inputs, returning a vector of outputs. The encoding can
-    /// encode recurrent connections and bias inputs, so an internal state is used. It is important to run
-    /// the clear_state method before calling evaluate again, unless it is desired to allow data
-    /// carry over from the previous evaluation, for example if the network is being used as a real
-    /// time controller.
-    /// 
+    /// Evaluates the neural network with the given inputs, returning a vector of outputs. The
+    /// encoding can encode recurrent connections and bias inputs, so an internal state is used. It
+    /// is important to run the clear_state method before calling evaluate again, unless it is
+    /// desired to allow data carry over from the previous evaluation, for example if the network
+    /// is being used as a real time controller.
+    ///
     /// If too little inputs are given, the empty inputs will have a value of zero. If too many
     /// inputs are given, the extras are discarded.
     ///
@@ -232,7 +239,7 @@ impl Network {
     ///
     /// // Get the output of the neural network with too many inputs (extras aren't used)
     /// let result = network.evaluate(&[1.0, 1.0, 1.0]).unwrap();
-    /// 
+    ///
     /// // Let's say adder.ann is a file with a neural network with recurrent connections, used for
     /// // adding numbers together.
     /// let mut adder = Network::load_from_file("adder.ann").unwrap();
@@ -267,7 +274,7 @@ impl Network {
             inputs,
             false,
             &self.neuron_info,
-            self.activation
+            self.activation,
         );
 
         // Perform post-evaluation updates/cleanup
@@ -293,7 +300,9 @@ impl Network {
         for gene in &mut self.genome {
             if let Gene::Neuron(neuron) = gene {
                 neuron.set_previous_value(
-                    neuron.current_value().expect("neuron's current value is not set"),
+                    neuron
+                        .current_value()
+                        .expect("neuron's current value is not set"),
                 );
             }
         }
@@ -412,7 +421,8 @@ fn evaluate_slice(
                 // If it is a neuron gene, pop the number of required inputs off the stack, and push
                 // the sum of these inputs passed through the activation function and the gene's
                 // weight onto the stack
-                let sum_inputs = stack.pop(neuron.num_inputs())
+                let sum_inputs = stack
+                    .pop(neuron.num_inputs())
                     .expect("A neuron did not receive enough inputs")
                     .iter()
                     .sum();

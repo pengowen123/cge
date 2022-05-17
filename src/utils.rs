@@ -4,9 +4,7 @@ pub struct Stack {
 
 impl Stack {
     pub fn new() -> Stack {
-        Stack {
-            data: Vec::new()
-        }
+        Stack { data: Vec::new() }
     }
 
     pub fn pop(&mut self, count: usize) -> Option<Vec<f64>> {

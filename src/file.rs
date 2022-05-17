@@ -1,11 +1,11 @@
-use std::path::Path;
 use std::fs::File;
-use std::io::{Read, Write, Error, ErrorKind};
 use std::io;
+use std::io::{Error, ErrorKind, Read, Write};
+use std::path::Path;
 
-use crate::Network;
-use crate::gene::*;
 use crate::activation::*;
+use crate::gene::*;
+use crate::Network;
 
 pub fn from_str(string: &str) -> Option<Network> {
     let parts = string.split(":").collect::<Vec<_>>();
@@ -45,7 +45,7 @@ pub fn from_str(string: &str) -> Option<Network> {
                 let inputs = gene[3].parse::<usize>().unwrap();
                 let neuron = Neuron::new(NeuronId::new(id), inputs, weight);
                 new_gene = neuron.into();
-            },
+            }
             "i" => {
                 if gene.len() != 3 {
                     return None;
@@ -55,7 +55,7 @@ pub fn from_str(string: &str) -> Option<Network> {
                 let input_id = gene[2].parse::<usize>().unwrap();
                 let input = Input::new(InputId::new(input_id), weight);
                 new_gene = input.into();
-            },
+            }
             "f" => {
                 if gene.len() != 3 {
                     return None;
@@ -65,7 +65,7 @@ pub fn from_str(string: &str) -> Option<Network> {
                 let source_id = gene[2].parse::<usize>().unwrap();
                 let forward = ForwardJumper::new(NeuronId::new(source_id), weight);
                 new_gene = forward.into();
-            },
+            }
             "r" => {
                 if gene.len() != 3 {
                     return None;
@@ -75,16 +75,16 @@ pub fn from_str(string: &str) -> Option<Network> {
                 let source_id = gene[2].parse::<usize>().unwrap();
                 let recurrent = RecurrentJumper::new(NeuronId::new(source_id), weight);
                 new_gene = recurrent.into();
-            },
+            }
             "b" => {
                 if gene.len() != 2 {
                     return None;
-                }   
+                }
 
                 let value = gene[1].parse::<f64>().unwrap();
                 let bias = Bias::new(value);
                 new_gene = bias.into();
-            },
+            }
             _ => {
                 return None;
             }
@@ -107,22 +107,29 @@ pub fn to_str(network: &Network) -> String {
         match gene {
             Gene::Input(input) => {
                 data.push_str(&format!("i {} {},", input.weight(), input.id().as_usize()));
-            },
+            }
             Gene::Neuron(neuron) => {
-                data.push_str(
-                    &format!("n {} {} {},", neuron.weight(), neuron.id().as_usize(), neuron.num_inputs())
-                );
-            },
+                data.push_str(&format!(
+                    "n {} {} {},",
+                    neuron.weight(),
+                    neuron.id().as_usize(),
+                    neuron.num_inputs()
+                ));
+            }
             Gene::ForwardJumper(forward) => {
-                data.push_str(
-                    &format!("f {} {},", forward.weight(), forward.source_id().as_usize())
-                );
-            },
+                data.push_str(&format!(
+                    "f {} {},",
+                    forward.weight(),
+                    forward.source_id().as_usize()
+                ));
+            }
             Gene::RecurrentJumper(recurrent) => {
-                data.push_str(
-                    &format!("r {} {},", recurrent.weight(), recurrent.source_id().as_usize())
-                );
-            },
+                data.push_str(&format!(
+                    "r {} {},",
+                    recurrent.weight(),
+                    recurrent.source_id().as_usize()
+                ));
+            }
             Gene::Bias(bias) => {
                 data.push_str(&format!("b {},", bias.value()));
             }
@@ -144,7 +151,10 @@ pub fn read_network(path: &str) -> io::Result<Network> {
 
     match network {
         Some(n) => Ok(n),
-        None => Err(Error::new(ErrorKind::InvalidData, "Invalid neural network file format"))
+        None => Err(Error::new(
+            ErrorKind::InvalidData,
+            "Invalid neural network file format",
+        )),
     }
 }
 
@@ -152,6 +162,6 @@ pub fn write_network(network: &Network, path: &str) -> io::Result<()> {
     let path = Path::new(path);
     let mut file = File::create(path)?;
     let data = to_str(network);
-    
+
     file.write_all(data.as_bytes())
 }
