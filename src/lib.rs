@@ -24,6 +24,7 @@
 // In the future, create a program for visualizing a neural network (generate an image or html)
 
 pub mod activation;
+mod evaluate;
 mod file;
 pub mod gene;
 pub mod network;
