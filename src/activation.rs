@@ -1,32 +1,46 @@
-// For months the missing transfer function went unnoticed. I only realized this after failing to
-// build a neural network to do XOR logic.
+//! Handling of neuron activation functions.
 
-//! Option type for setting the transfer function.
-
-/// Represents which transfer function to use for evaluating neural networks.
+/// Represents which activation function to use when evaluating neurons.
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum Activation {
-    /// Maps input to output directly, as if there is no transfer function.
+    /// Identity function. Outputs `x`.
     Linear,
-    /// Outputs 1 if input is greater than 0, 0 otherwise.
-    Threshold,
-    /// Outputs 1 if input is greater than 0, 0 if input is equal to 0, -1 otherwise. Useful
-    /// for simple problems and boolean logic, as it only allows three possible output values.
+    /// Heaviside or unit step function. Outputs `1` for `x > 0`, or `0` otherwise.
+    UnitStep,
+    /// Sign function. Outputs `1` for `x > 0`, `0` for `x = 0`, or `-1` otherwise.
     Sign,
-    /// A non-linear function. This function is the most general, so it should be defaulted to.
+    /// Logistic function. Outputs `1 / (1 + exp(-x))`.
     Sigmoid,
+    /// Hyperbolic tangent function. Outputs `tanh(x)`.
     Tanh,
+    /// Softsign function. Outputs `x / (1 + abs(x))`.
     SoftSign,
+    /// Bent identity function. Outputs `(sqrt(x^2 + 1) - 1) / 2 + x`.
     BentIdentity,
+    /// Rectified linear unit. Outputs `max(x, 0)`.
     Relu,
 }
 
 impl Activation {
-    /// Return the corresponding function to the Activation
-    pub fn get_func(&self) -> fn(f64) -> f64 {
+    /// Applies the activation function to the input.
+    pub fn apply(&self, x: f64) -> f64 {
+        match self {
+            Activation::Linear => linear(x),
+            Activation::UnitStep => unit_step(x),
+            Activation::Sign => sign(x),
+            Activation::Sigmoid => sigmoid(x),
+            Activation::Tanh => tanh(x),
+            Activation::SoftSign => soft_sign(x),
+            Activation::BentIdentity => bent_identity(x),
+            Activation::Relu => relu(x),
+        }
+    }
+
+    /// Returns the corresponding function to the `Activation`.
+    pub fn get_function(&self) -> fn(f64) -> f64 {
         match self {
             Activation::Linear => linear,
-            Activation::Threshold => threshold,
+            Activation::UnitStep => unit_step,
             Activation::Sign => sign,
             Activation::Sigmoid => sigmoid,
             Activation::Tanh => tanh,
@@ -35,27 +49,15 @@ impl Activation {
             Activation::Relu => relu,
         }
     }
-
-    /// parse the Activation from an int 32 value
-    pub fn from_i32(n: i32) -> Activation {
-        match n {
-            0 => Activation::Linear,
-            1 => Activation::Threshold,
-            2 => Activation::Sign,
-            3 => Activation::Sigmoid,
-            4 => Activation::Tanh,
-            5 => Activation::SoftSign,
-            6 => Activation::BentIdentity,
-            _ => Activation::Relu,
-        }
-    }
 }
 
+/// Outputs `x`.
 pub fn linear(x: f64) -> f64 {
     x
 }
 
-pub fn threshold(x: f64) -> f64 {
+/// Heaviside/unit step function. Outputs `1` for `x > 0`, or `0` otherwise.
+pub fn unit_step(x: f64) -> f64 {
     if x > 0.0 {
         1.0
     } else {
@@ -63,6 +65,7 @@ pub fn threshold(x: f64) -> f64 {
     }
 }
 
+/// Outputs `1` for `x > 0`, `0` for `x = 0`, or `-1` otherwise.
 pub fn sign(x: f64) -> f64 {
     if x > 0.0 {
         1.0
@@ -73,23 +76,27 @@ pub fn sign(x: f64) -> f64 {
     }
 }
 
+/// Logistic function. Outputs `1 / (1 + exp(-x))`.
 pub fn sigmoid(x: f64) -> f64 {
     1.0 / (1.0 + (-x).exp())
 }
 
+/// Outputs `tanh(x)`.
 pub fn tanh(x: f64) -> f64 {
     x.tanh()
 }
 
+/// Outputs `x / (1 + abs(x))`.
 pub fn soft_sign(x: f64) -> f64 {
     x / (1.0 + x.abs())
 }
 
+/// Outputs `(sqrt(x^2 + 1) - 1) / 2 + x`.
 pub fn bent_identity(x: f64) -> f64 {
     (((x.powi(2) + 1.0).sqrt() - 1.0) / 2.0) + x
 }
 
-/// rectified linear unit
+/// Rectified linear unit. Outputs `max(0, x)`.
 pub fn relu(x: f64) -> f64 {
-    return if x > 0.0 { x } else { 0.0 };
+    x.max(0.0)
 }

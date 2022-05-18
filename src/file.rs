@@ -15,7 +15,17 @@ pub fn from_str(string: &str) -> Option<Network> {
     }
 
     let activation = if let Ok(v) = parts[0].parse() {
-        Activation::from_i32(v)
+        match v {
+            0 => Activation::Linear,
+            1 => Activation::UnitStep,
+            2 => Activation::Sign,
+            3 => Activation::Sigmoid,
+            4 => Activation::Tanh,
+            5 => Activation::SoftSign,
+            6 => Activation::BentIdentity,
+            7 => Activation::Relu,
+            _ => return None,
+        }
     } else {
         return None;
     };

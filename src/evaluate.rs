@@ -61,7 +61,7 @@ pub fn evaluate_slice(
                     .sum();
 
                 // Apply the activation function
-                value = activation.get_func()(sum_inputs);
+                value = activation.apply(sum_inputs);
 
                 // Update the neuron's current value (unweighted)
                 neuron.set_current_value(Some(value));
