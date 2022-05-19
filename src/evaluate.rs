@@ -1,12 +1,12 @@
 //! Evaluation of networks.
 
-use std::ops::{Index, Range};
 use std::collections::HashMap;
+use std::ops::{Index, Range};
 
-use crate::gene::{Gene, NeuronId, InputId};
 use crate::activation::Activation;
+use crate::gene::{Gene, InputId, NeuronId};
 use crate::network::NeuronInfo;
-use crate::utils::Stack;
+use crate::stack::Stack;
 
 /// The inputs to a network.
 #[derive(Clone, Copy)]
@@ -20,21 +20,19 @@ impl<'a> Index<InputId> for Inputs<'a> {
     }
 }
 
-/// Returns the output of the subgenome in the given range.
+/// Evaluates the subgenome in the given range. The output of the subgenome is placed on the stack.
 ///
 /// If `ignore_final_neuron_weight` is `true`, the weight of the final neuron in the subgenome is
 /// ignored.
-pub fn evaluate_slice(
+pub fn evaluate_slice<'s>(
     genome: &mut Vec<Gene>,
     range: Range<usize>,
     inputs: Inputs,
+    stack: &'s mut Stack,
     ignore_final_neuron_weight: bool,
     neuron_info: &HashMap<NeuronId, NeuronInfo>,
     activation: Activation,
-) -> Vec<f64> {
-    // Initialize a stack for evaluating the neural network
-    let mut stack = Stack::new();
-
+) {
     // Iterate backwards over the specified slice
     for (i, gene_index) in range.enumerate().rev() {
         let weight;
@@ -55,10 +53,8 @@ pub fn evaluate_slice(
                 // the sum of these inputs passed through the activation function and the gene's
                 // weight onto the stack
                 let sum_inputs = stack
-                    .pop(neuron.num_inputs())
-                    .expect("A neuron did not receive enough inputs")
-                    .iter()
-                    .sum();
+                    .pop_sum(neuron.num_inputs())
+                    .expect("A neuron did not receive enough inputs");
 
                 // Apply the activation function
                 value = activation.apply(sum_inputs);
@@ -108,10 +104,12 @@ pub fn evaluate_slice(
                     genome,
                     source_subgenome_range,
                     inputs,
+                    stack,
                     true,
                     neuron_info,
                     activation,
-                )[0]
+                );
+                stack.pop().unwrap()
             };
 
             value = subgenome_output;
@@ -146,6 +144,4 @@ pub fn evaluate_slice(
         // Push the weighted value onto the stack
         stack.push(weight * value);
     }
-
-    stack.data
 }

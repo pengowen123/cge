@@ -2,13 +2,13 @@
 
 use std::collections::HashMap;
 use std::io;
-use std::ops::{Index, Range};
+use std::ops::Range;
 
 use crate::activation::*;
 use crate::evaluate::{self, Inputs};
 use crate::file;
 use crate::gene::*;
-use crate::utils::Stack;
+use crate::stack::Stack;
 
 /// Info about a neuron in a genome.
 #[derive(Clone, Debug)]
@@ -75,6 +75,8 @@ pub struct Network {
     num_inputs: usize,
     // The number of network outputs
     num_outputs: usize,
+    // The stack used when evaluating the `Network`
+    stack: Stack,
 }
 
 impl Network {
@@ -99,6 +101,7 @@ impl Network {
             neuron_info: HashMap::new(),
             num_inputs: 0,
             num_outputs: 0,
+            stack: Stack::new(),
         };
 
         network.rebuild_network_metadata()?;
@@ -250,26 +253,30 @@ impl Network {
     /// // The 1.0 from the previous call is gone, so result_two will be 2.0
     /// let result_two = adder.evaluate(&[2.0]).unwrap();
     /// ```
-    pub fn evaluate(&mut self, inputs: &[f64]) -> Result<Vec<f64>, NotEnoughInputsError> {
+    pub fn evaluate(&mut self, inputs: &[f64]) -> Result<&[f64], NotEnoughInputsError> {
         if inputs.len() < self.num_inputs {
             return Err(NotEnoughInputsError);
         }
 
+        // Clear any previous network outputs
+        self.stack.clear();
+
         let inputs = Inputs(inputs);
         let length = self.genome.len();
-        let result = evaluate::evaluate_slice(
+        evaluate::evaluate_slice(
             &mut self.genome,
             0..length,
             inputs,
+            &mut self.stack,
             false,
             &self.neuron_info,
             self.activation,
         );
 
         // Perform post-evaluation updates/cleanup
-        self.update_stored_values();
+        update_stored_values(&mut self.genome);
 
-        Ok(result)
+        Ok(self.stack.as_slice())
     }
 
     /// Clears the persistent state of the neural network.
@@ -280,19 +287,6 @@ impl Network {
         for gene in &mut self.genome {
             if let Gene::Neuron(neuron) = gene {
                 neuron.set_previous_value(0.0);
-            }
-        }
-    }
-
-    /// Moves the current value stored in each neuron into its previous value.
-    fn update_stored_values(&mut self) {
-        for gene in &mut self.genome {
-            if let Gene::Neuron(neuron) = gene {
-                neuron.set_previous_value(
-                    neuron
-                        .current_value()
-                        .expect("neuron's current value is not set"),
-                );
             }
         }
     }
@@ -376,6 +370,19 @@ impl Network {
     }
 }
 
+/// Moves the current value stored in each neuron into its previous value.
+fn update_stored_values(genome: &mut [Gene]) {
+    for gene in genome {
+        if let Gene::Neuron(neuron) = gene {
+            neuron.set_previous_value(
+                neuron
+                    .current_value()
+                    .expect("neuron's current value is not set"),
+            );
+        }
+    }
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
@@ -415,12 +422,13 @@ pub(crate) mod tests {
         let mut net = Network::from_str(genome).unwrap();
         // The recurrent jumper reads a previous value of zero despite the neuron already being
         // evaluated by the time the jumper is reached
-        let output = net.evaluate(&[]).unwrap();
+        let output = net.evaluate(&[]).unwrap().to_vec();
         assert_eq!(output.len(), 1);
         assert_eq!(output[0], 1.0);
 
         // The recurrent jumper now reads a non-zero previous value from the first evaluation
         let output2 = net.evaluate(&[]).unwrap();
+        assert_eq!(output2.len(), 1);
         assert_eq!(output2[0], 4.0);
     }
 }

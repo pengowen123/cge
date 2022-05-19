@@ -28,7 +28,7 @@ mod evaluate;
 mod file;
 pub mod gene;
 pub mod network;
-mod utils;
+mod stack;
 
 pub use self::activation::Activation;
 pub use self::network::Network;
