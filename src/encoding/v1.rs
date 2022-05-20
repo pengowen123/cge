@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use super::{CommonMetadata, EncodingVersion, MetadataVersion, PortableCGE};
 use crate::activation::Activation;
 use crate::gene::Gene;
-use crate::network::{InvalidNetworkError, Network};
+use crate::network::{self, Network};
 
 /// A type for encoding a [`Network`][crate::Network] and its metadata in version one of the
 /// format.
@@ -30,7 +30,7 @@ impl<E> EncodingVersion<E> for Data<E> {
         .into()
     }
 
-    fn build(self) -> Result<(Network, CommonMetadata, E), InvalidNetworkError> {
+    fn build(self) -> Result<(Network, CommonMetadata, E), network::Error> {
         let network = Network::new(self.genome, self.activation)?;
 
         Ok((network, self.metadata.into(), self.extra))

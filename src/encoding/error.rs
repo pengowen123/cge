@@ -2,7 +2,7 @@ use serde_json;
 
 use std::{error, fmt, io};
 
-use crate::network::InvalidNetworkError;
+use crate::network;
 
 /// An error while loading or saving a [`Network`][crate::Network] from/to the encoding.
 #[derive(Debug)]
@@ -12,7 +12,7 @@ pub enum Error {
     /// An error while reading from/writing to a file.
     Io(io::Error),
     /// An error while constructing a [`Network`][crate::Network].
-    CGE(InvalidNetworkError),
+    CGE(network::Error),
 }
 
 impl fmt::Display for Error {
@@ -47,8 +47,8 @@ impl From<io::Error> for Error {
     }
 }
 
-impl From<InvalidNetworkError> for Error {
-    fn from(e: InvalidNetworkError) -> Self {
+impl From<network::Error> for Error {
+    fn from(e: network::Error) -> Self {
         Self::CGE(e)
     }
 }

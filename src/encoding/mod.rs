@@ -6,7 +6,7 @@ pub mod v1;
 
 use serde::{Deserialize, Serialize};
 
-use crate::network::{InvalidNetworkError, Network};
+use crate::network::{self, Network};
 
 pub use error::Error;
 pub(crate) use functions::*;
@@ -40,7 +40,7 @@ pub enum PortableCGE<E> {
 impl<E> PortableCGE<E> {
     /// Builds the `PortableCGE` into a [`Network`], its [`CommonMetadata`], and the user defined
     /// extra data.
-    pub fn build(self) -> Result<(Network, CommonMetadata, E), InvalidNetworkError> {
+    pub fn build(self) -> Result<(Network, CommonMetadata, E), network::Error> {
         match self {
             Self::V1(e) => e.build(),
         }
@@ -90,7 +90,7 @@ pub trait EncodingVersion<E>: Into<PortableCGE<E>> {
 
     /// Converts `self` into a [`Network`][crate::Network], its metadata, and the user-defined
     /// extra data.
-    fn build(self) -> Result<(Network, CommonMetadata, E), InvalidNetworkError>;
+    fn build(self) -> Result<(Network, CommonMetadata, E), network::Error>;
 }
 
 /// A trait implemented by all versioned metadata types.

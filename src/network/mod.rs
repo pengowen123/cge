@@ -1,18 +1,22 @@
 //! The neural network struct.
 
+mod error;
+mod evaluate;
+
+pub use error::Error;
+
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use std::collections::HashMap;
 use std::ops::Range;
 use std::path::Path;
-use std::{error, fmt};
 
 use crate::activation::*;
 use crate::encoding::{self, CommonMetadata, EncodingVersion, MetadataVersion, PortableCGE};
-use crate::evaluate::{self, Inputs};
 use crate::gene::*;
 use crate::stack::Stack;
+use evaluate::Inputs;
 
 /// Info about a neuron in a genome.
 #[derive(Clone, Debug)]
@@ -43,63 +47,6 @@ impl NeuronInfo {
     }
 }
 
-/// The reason why a genome is invalid.
-#[derive(Clone, Debug)]
-pub enum InvalidNetworkError {
-    /// The genome is empty.
-    EmptyGenome,
-    /// A neuron has an input count of zero. Contains the index and ID of the neuron gene.
-    InvalidInputCount(usize, NeuronId),
-    /// A neuron does not receive enough inputs. Contains the index and ID of the neuron gene.
-    NotEnoughInputs(usize, NeuronId),
-    /// Two or more neurons share the same ID. Contains the indices of the duplicates and their ID.
-    DuplicateNeuronId(usize, usize, NeuronId),
-    /// A non-neuron gene is an output of the network. Contains the index of the gene.
-    NonNeuronOutput(usize),
-    /// A forward jumper connection's parent neuron does not have a lesser depth than its source
-    /// neuron. Contains the index of the forward jumper gene.
-    InvalidForwardJumper(usize),
-}
-
-impl fmt::Display for InvalidNetworkError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Self::EmptyGenome => write!(f, "empty genome"),
-            Self::InvalidInputCount(index, id) => write!(
-                f,
-                "invalid input count for neuron {} at index {}",
-                id.as_usize(),
-                index
-            ),
-            Self::NotEnoughInputs(index, id) => write!(
-                f,
-                "not enough inputs to neuron {} at index {}",
-                id.as_usize(),
-                index
-            ),
-            Self::DuplicateNeuronId(index_a, index_b, id) => write!(
-                f,
-                "duplicate neuron ID {} at indices {} and {}",
-                id.as_usize(),
-                index_a,
-                index_b
-            ),
-            Self::NonNeuronOutput(index) => {
-                write!(f, "non-neuron gene at index {} is a network output", index)
-            }
-            Self::InvalidForwardJumper(index) => {
-                write!(f, "invalid forward jumper connection at index {}", index)
-            }
-        }
-    }
-}
-
-impl error::Error for InvalidNetworkError {}
-
-/// Too few inputs were passed to [`Network::evaluate`].
-#[derive(Clone, Debug)]
-pub struct NotEnoughInputsError;
-
 #[derive(Clone, Debug)]
 pub struct Network {
     // The genes of the network
@@ -119,7 +66,7 @@ pub struct Network {
 }
 
 impl Network {
-    pub fn new(genome: Vec<Gene>, activation: Activation) -> Result<Self, InvalidNetworkError> {
+    pub fn new(genome: Vec<Gene>, activation: Activation) -> Result<Self, Error> {
         let next_neuron_id = genome
             .iter()
             .filter_map(|g| {
@@ -180,7 +127,6 @@ impl Network {
         encoding::to_string(self.to_serializable(metadata, extra))
     }
 
-
     /// Saves this network, its metadata, and an arbitrary extra data type to a file. `()` can be
     /// used if storing extra data is not needed.
     ///
@@ -237,10 +183,10 @@ impl Network {
 
     /// Rebuilds the internal [`NeuronInfo`] map and other network metadata and checks the validity
     /// of the genome.
-    fn rebuild_network_metadata(&mut self) -> Result<(), InvalidNetworkError> {
+    fn rebuild_network_metadata(&mut self) -> Result<(), Error> {
         // O(n)
         if self.genome.is_empty() {
-            return Err(InvalidNetworkError::EmptyGenome);
+            return Err(Error::EmptyGenome);
         }
 
         let mut counter = 0isize;
@@ -266,7 +212,7 @@ impl Network {
 
                 // All neurons must have at least one input
                 if neuron.num_inputs() == 0 {
-                    return Err(InvalidNetworkError::InvalidInputCount(i, neuron.id()));
+                    return Err(Error::InvalidInputCount(i, neuron.id()));
                 }
 
                 // Neuron genes consume a number of the following outputs equal to their required
@@ -277,7 +223,7 @@ impl Network {
 
                 // Non-neuron genes must have a parent because they cannot be network outputs
                 if stopping_points.is_empty() {
-                    return Err(InvalidNetworkError::NonNeuronOutput(i));
+                    return Err(Error::NonNeuronOutput(i));
                 }
 
                 // Add forward jumper info to be checked later
@@ -292,11 +238,7 @@ impl Network {
 
                     if let Some(existing) = neuron_info.get(&id) {
                         let existing_index = existing.subgenome_range().start;
-                        return Err(InvalidNetworkError::DuplicateNeuronId(
-                            existing_index,
-                            start_index,
-                            id,
-                        ));
+                        return Err(Error::DuplicateNeuronId(existing_index, start_index, id));
                     }
 
                     let subgenome_range = start_index..i + 1;
@@ -313,14 +255,14 @@ impl Network {
 
         // If any subgenomes were not fully traversed, a neuron did not receive enough inputs
         if let Some(&(_, id, index, _)) = stopping_points.last() {
-            return Err(InvalidNetworkError::NotEnoughInputs(index, id));
+            return Err(Error::NotEnoughInputs(index, id));
         }
 
         // Check that forward jumpers always connect parent neurons to source neurons of higher
         // depth
         for (jumper_index, parent_depth, source_id) in forward_jumper_checks {
             if parent_depth >= neuron_info[&source_id].depth() {
-                return Err(InvalidNetworkError::InvalidForwardJumper(jumper_index));
+                return Err(Error::InvalidForwardJumper(jumper_index));
             }
         }
 
@@ -339,9 +281,9 @@ impl Network {
     /// is being used as a real time controller.
     ///
     /// If too many inputs are given, the extras are discarded.
-    pub fn evaluate(&mut self, inputs: &[f64]) -> Result<&[f64], NotEnoughInputsError> {
+    pub fn evaluate(&mut self, inputs: &[f64]) -> Option<&[f64]> {
         if inputs.len() < self.num_inputs {
-            return Err(NotEnoughInputsError);
+            return None;
         }
 
         // Clear any previous network outputs
@@ -362,7 +304,7 @@ impl Network {
         // Perform post-evaluation updates/cleanup
         update_stored_values(&mut self.genome);
 
-        Ok(self.stack.as_slice())
+        Some(self.stack.as_slice())
     }
 
     /// Clears the persistent state of the neural network.
@@ -434,7 +376,8 @@ pub(crate) mod tests {
 
     #[test]
     fn test_recurrent_previous_value() {
-        let (mut net, _, ()) = Network::load_file(get_file_path("test_network_recurrent.cge")).unwrap();
+        let (mut net, _, ()) =
+            Network::load_file(get_file_path("test_network_recurrent.cge")).unwrap();
 
         // The recurrent jumper reads a previous value of zero despite the neuron already being
         // evaluated by the time the jumper is reached

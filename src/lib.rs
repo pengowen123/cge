@@ -7,7 +7,6 @@
 
 pub mod activation;
 pub mod encoding;
-mod evaluate;
 pub mod gene;
 pub mod network;
 mod stack;

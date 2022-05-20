@@ -63,8 +63,7 @@ where
 
     let file = File::create(path)?;
     let mut writer = BufWriter::new(file);
-    let result =
-        serde_json::to_writer_pretty(&mut writer, &serializable)?;
+    let result = serde_json::to_writer_pretty(&mut writer, &serializable)?;
 
     writer.flush()?;
 
