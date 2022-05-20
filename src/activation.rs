@@ -103,3 +103,23 @@ pub fn bent_identity(x: f64) -> f64 {
 pub fn relu(x: f64) -> f64 {
     x.max(0.0)
 }
+
+#[cfg(test)]
+mod tests {
+    use assert_approx_eq::assert_approx_eq;
+
+    use super::*;
+
+    #[test]
+    fn test_activation() {
+        assert_approx_eq!(5.0, Activation::Linear.apply(5.0));
+        assert_approx_eq!(0.0, Activation::UnitStep.apply(-5.0));
+        assert_approx_eq!(-1.0, Activation::Sign.apply(-5.0));
+        assert_approx_eq!(0.8807970779778823, Activation::Sigmoid.apply(2.0));
+        assert_approx_eq!(0.9640275800758169, Activation::Tanh.apply(2.0));
+        assert_approx_eq!(0.8333333333333334, Activation::SoftSign.apply(5.0));
+        assert_approx_eq!(7.049509756796392, Activation::BentIdentity.apply(5.0));
+        assert_approx_eq!(5.0, Activation::Relu.apply(5.0));
+        assert_approx_eq!(0.0, Activation::Relu.apply(-5.0));
+    }
+}
