@@ -1,12 +1,16 @@
 //! The neural network struct.
 
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
+
 use std::collections::HashMap;
-use std::io;
 use std::ops::Range;
+use std::path::Path;
+use std::{error, fmt};
 
 use crate::activation::*;
+use crate::encoding::{self, CommonMetadata, EncodingVersion, MetadataVersion, PortableCGE};
 use crate::evaluate::{self, Inputs};
-use crate::file;
 use crate::gene::*;
 use crate::stack::Stack;
 
@@ -56,6 +60,41 @@ pub enum InvalidNetworkError {
     /// neuron. Contains the index of the forward jumper gene.
     InvalidForwardJumper(usize),
 }
+
+impl fmt::Display for InvalidNetworkError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::EmptyGenome => write!(f, "empty genome"),
+            Self::InvalidInputCount(index, id) => write!(
+                f,
+                "invalid input count for neuron {} at index {}",
+                id.as_usize(),
+                index
+            ),
+            Self::NotEnoughInputs(index, id) => write!(
+                f,
+                "not enough inputs to neuron {} at index {}",
+                id.as_usize(),
+                index
+            ),
+            Self::DuplicateNeuronId(index_a, index_b, id) => write!(
+                f,
+                "duplicate neuron ID {} at indices {} and {}",
+                id.as_usize(),
+                index_a,
+                index_b
+            ),
+            Self::NonNeuronOutput(index) => {
+                write!(f, "non-neuron gene at index {} is a network output", index)
+            }
+            Self::InvalidForwardJumper(index) => {
+                write!(f, "invalid forward jumper connection at index {}", index)
+            }
+        }
+    }
+}
+
+impl error::Error for InvalidNetworkError {}
 
 /// Too few inputs were passed to [`Network::evaluate`].
 #[derive(Clone, Debug)]
@@ -107,6 +146,93 @@ impl Network {
         network.rebuild_network_metadata()?;
 
         Ok(network)
+    }
+
+    /// Loads a previously-saved network, its metadata, and the user-defined extra data from a
+    /// string. If no extra data is present, `E` can be set to `()`.
+    pub fn load_str<'a, E>(s: &'a str) -> Result<(Network, CommonMetadata, E), encoding::Error>
+    where
+        E: Deserialize<'a>,
+    {
+        encoding::load_str(s)
+    }
+
+    /// Loads a previously-saved network, its metadata, and the user-defined extra data from a file.
+    /// If no extra data is present, `E` can be set to `()`.
+    pub fn load_file<E, P>(path: P) -> Result<(Network, CommonMetadata, E), encoding::Error>
+    where
+        E: DeserializeOwned,
+        P: AsRef<Path>,
+    {
+        encoding::load_file(path)
+    }
+
+    /// Saves this network, its metadata, and an arbitrary extra data type to a string. `()` can be
+    /// used if storing extra data is not needed.
+    ///
+    /// Using [`Metadata`][encoding::Metadata] will automatically use the latest encoding version,
+    /// but a specific `Metadata` type can be used to select a specific version instead.
+    pub fn to_string<E, M>(&self, metadata: M, extra: E) -> Result<String, encoding::Error>
+    where
+        E: Serialize,
+        M: MetadataVersion<E>,
+    {
+        encoding::to_string(self.to_serializable(metadata, extra))
+    }
+
+
+    /// Saves this network, its metadata, and an arbitrary extra data type to a file. `()` can be
+    /// used if storing extra data is not needed.
+    ///
+    /// Using [`Metadata`][encoding::Metadata] will automatically use the latest encoding version,
+    /// but a specific `Metadata` type can be used to select a specific version instead.
+    ///
+    /// Recursively creates missing directories if `create_dirs` is `true`.
+    pub fn to_file<E, M, P>(
+        &self,
+        metadata: M,
+        extra: E,
+        path: P,
+        create_dirs: bool,
+    ) -> Result<(), encoding::Error>
+    where
+        E: Serialize,
+        M: MetadataVersion<E>,
+        P: AsRef<Path>,
+    {
+        encoding::to_file(self.to_serializable(metadata, extra), path, create_dirs)
+    }
+
+    /// Converts the network to a serializable format. This can be used to save it in a format other
+    /// than JSON. See [`PortableCGE`] for deserialization from different formats.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use cge::Network;
+    /// # let (network, _, ()) =
+    /// #     Network::load_file(format!(
+    /// #         "{}/test_data/test_network_v1.cge",
+    /// #         env!("CARGO_MANIFEST_DIR")
+    /// #     )).unwrap();
+    /// use cge::encoding::{Metadata, PortableCGE};
+    ///
+    /// let metadata = Metadata::new("a description".to_string());
+    /// let extra = ();
+    /// let serializable = network.to_serializable(metadata, extra);
+    ///
+    /// // Any format supported by `serde`` can be used here
+    /// let string = serde_json::to_string(&serializable).unwrap();
+    ///
+    /// // Other formats can be used when deserializing as well
+    /// let deserialized: PortableCGE<()> = serde_json::from_str(&string).unwrap();
+    /// let (network, metadata, extra) = deserialized.build().unwrap();
+    /// ```
+    pub fn to_serializable<E, M>(&self, metadata: M, extra: E) -> PortableCGE<E>
+    where
+        M: MetadataVersion<E>,
+    {
+        M::Data::new(self, metadata, extra)
     }
 
     /// Rebuilds the internal [`NeuronInfo`] map and other network metadata and checks the validity
@@ -212,47 +338,7 @@ impl Network {
     /// desired to allow data carry over from the previous evaluation, for example if the network
     /// is being used as a real time controller.
     ///
-    /// If too little inputs are given, the empty inputs will have a value of zero. If too many
-    /// inputs are given, the extras are discarded.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use cge::Network;
-    ///
-    /// // Load a neural network
-    /// let mut network = Network::load_from_file("neural_network.ann").unwrap();
-    ///
-    /// // Get the output of the neural network the the specified inputs
-    /// let result = network.evaluate(&vec![1.0, 1.0]).unwrap();
-    ///
-    /// // Get the output of the neural network with no inputs
-    /// let result = network.evaluate(&[]).unwrap();
-    ///
-    /// // Get the output of the neural network with too many inputs (extras aren't used)
-    /// let result = network.evaluate(&[1.0, 1.0, 1.0]).unwrap();
-    ///
-    /// // Let's say adder.ann is a file with a neural network with recurrent connections, used for
-    /// // adding numbers together.
-    /// let mut adder = Network::load_from_file("adder.ann").unwrap();
-    ///
-    /// // result_one will be 1.0
-    /// let result_one = adder.evaluate(&[1.0]).unwrap();
-    ///
-    /// // result_two will be 3.0
-    /// let result_two = adder.evaluate(&[2.0]).unwrap();
-    ///
-    /// // result_three will be 5.0
-    /// let result_three = adder.evaluate(&[2.0]).unwrap();
-    ///
-    /// // If this behavior is not desired, call the clear_state method between evaluations:
-    /// let result_one = adder.evaluate(&[1.0]).unwrap();
-    ///
-    /// adder.clear_state();
-    ///
-    /// // The 1.0 from the previous call is gone, so result_two will be 2.0
-    /// let result_two = adder.evaluate(&[2.0]).unwrap();
-    /// ```
+    /// If too many inputs are given, the extras are discarded.
     pub fn evaluate(&mut self, inputs: &[f64]) -> Result<&[f64], NotEnoughInputsError> {
         if inputs.len() < self.num_inputs {
             return Err(NotEnoughInputsError);
@@ -281,68 +367,14 @@ impl Network {
 
     /// Clears the persistent state of the neural network.
     ///
-    /// This state is only used by [`RecurrentJumper`][gene::RecurrentJumper] connections, so
-    /// calling this method is unnecessary if the network does not contain them.
+    /// This state is only used by [`RecurrentJumper`] connections, so calling this method is
+    /// unnecessary if the network does not contain them.
     pub fn clear_state(&mut self) {
         for gene in &mut self.genome {
             if let Gene::Neuron(neuron) = gene {
                 neuron.set_previous_value(0.0);
             }
         }
-    }
-
-    /// Loads a neural network from a string. Returns `None` if the format is incorrect.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use cge::Network;
-    ///
-    /// // Store the neural network in a string
-    /// let string = "0: n 1 0 2,n 1 1 2,n 1 3 2,
-    ///               i 1 0,i 1 1,i 1 1,n 1 2 4,
-    ///               f 1 3,i 1 0,i 1 1,r 1 0";
-    ///
-    /// // Load a neural network from the string
-    /// let network = Network::from_str(string).unwrap();
-    /// ```
-    ///
-    /// # Format
-    ///
-    /// The format for the string is simple enough to build by hand:
-    ///
-    /// First, the number 0, 1, 2 or 3 is entered to represent the linear, threshold, sign, or
-    /// sigmoid function, followed by a colon. The rest is the genome, encoded with comma
-    /// separated genes:
-    ///
-    /// Neuron:     n [weight] [id] [input count]
-    /// Input:      i [weight] [id]
-    /// Connection: f [weight] [id]
-    /// Recurrent:  r [weight] [id]
-    /// Bias:       b [weight]
-    ///
-    /// For more information about what this means, see [here][1].
-    ///
-    /// [1]: http://www.academia.edu/6923193/A_common_genetic_encoding_for_both_direct_and_indirect_encodings_of_networks
-    pub fn from_str(string: &str) -> Option<Network> {
-        file::from_str(string)
-    }
-
-    /// Saves the neural network to a string. Allows embedding a neural network in source code.
-    pub fn to_str(&self) -> String {
-        file::to_str(self)
-    }
-
-    /// Saves the neural network to a file. Returns an empty tuple on success, or an io error.
-    pub fn save_to_file(&self, path: &str) -> io::Result<()> {
-        file::write_network(self, path)
-    }
-
-    /// Loads a neural network from a file. No guarantees are made about the validity of the
-    /// genome. Returns the network, or an io error. If the file is in a bad format,
-    /// `std::io::ErrorKind::InvalidData` is returned.
-    pub fn load_from_file(path: &str) -> io::Result<Network> {
-        file::read_network(path)
     }
 
     /// Returns the genome of this `Network`.
@@ -387,39 +419,23 @@ fn update_stored_values(genome: &mut [Gene]) {
 pub(crate) mod tests {
     use super::*;
 
-    // linear genome from fig. 5.3 in paper:
-    // https://www.researchgate.net/profile/Yohannes_Kassahun/publication/266864021_Towards_a_Unified_Approach_to_Learning_and_Adaptation/links/54ba91790cf253b50e2d037d.pdf?origin=publication_detail
-    const TEST_GENOME: &'static str = "0: n 0.6 0 2,n 0.8 1 2,n 0.9 3 2,i 0.1 0,i 0.4 1,i 0.5 1,n 0.2 2 4,f 0.3 3,i 0.7 0,i 0.8 1,r 0.2 0";
-
-    // This genome has one more neuron than TEST_GENOME
-    // It is placed between neuron 3 and input id 1 by splitting one connection into two
-    // Therefore the Genome has one more gene
-    // The link weight connecting neuron 3 and 4 is 0.2,
-    // The link weight connecting neuron 4 and input 1 is 0.3
-    // removed original connection gene from neuron 3 to input 1
-    const TEST_GENOME_2: &'static str = "0: n 0.6 0 2,n 0.8 1 2,n 0.9 3 2,i 0.1 0,n 0.2 4 1,i 0.3 1,i 0.5 1,n 0.2 2 4,f 0.3 3,i 0.7 0,i 0.8 1,r 0.2 0";
+    fn get_file_path(file_name: &str) -> String {
+        format!("{}/test_data/{}", env!("CARGO_MANIFEST_DIR"), file_name)
+    }
 
     #[test]
-    fn test_genome_is_correct() {
-        let mut net = Network::from_str(TEST_GENOME).unwrap();
+    fn test_evaluate() {
+        // Example network from the CGE paper
+        let (mut net, _, ()) = Network::load_file(get_file_path("test_network_v1.cge")).unwrap();
         let output = net.evaluate(&vec![1.0, 1.0]).unwrap();
         assert_eq!(output.len(), 1);
         assert_eq!(output[0], 0.654);
     }
 
     #[test]
-    fn jump_recurrent_is_correct() {
-        let mut net = Network::from_str(TEST_GENOME_2).unwrap();
-        let output = net.evaluate(&vec![1.0, 1.0]).unwrap();
-        assert_eq!(output.len(), 1);
-        assert_eq!(output[0], 0.49488);
-    }
-
-    #[test]
     fn test_recurrent_previous_value() {
-        let genome = "0: n 1.0 0 2,r 3.0 1,n 1.0 1 1,b 1.0";
+        let (mut net, _, ()) = Network::load_file(get_file_path("test_network_recurrent.cge")).unwrap();
 
-        let mut net = Network::from_str(genome).unwrap();
         // The recurrent jumper reads a previous value of zero despite the neuron already being
         // evaluated by the time the jumper is reached
         let output = net.evaluate(&[]).unwrap().to_vec();

@@ -11,3 +11,10 @@ readme = "README.md"
 license = "GPL-3.0"
 documentation = "https://docs.rs/cge"
 repository = "https://github.com/pengowen123/cge"
+
+[dependencies]
+serde_json = "1.0"
+
+[dependencies.serde]
+version = "1.0"
+features = ["derive"]

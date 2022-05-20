@@ -1,7 +1,10 @@
 //! Handling of neuron activation functions.
 
+use serde::{Deserialize, Serialize};
+
 /// Represents which activation function to use when evaluating neurons.
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Activation {
     /// Identity function. Outputs `x`.
     Linear,
