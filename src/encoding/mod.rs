@@ -10,7 +10,11 @@ use crate::network::{self, Network};
 
 pub use error::Error;
 pub(crate) use functions::*;
-pub use v1::{Data, Metadata};
+
+/// The latest metadata version.
+pub type Metadata = v1::Metadata;
+/// The latest encoding version.
+pub type Data<E> = v1::Data<E>;
 
 /// The portable encoding type, which can be serialized and deserialized to save or load networks
 /// and their metadata.
