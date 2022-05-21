@@ -19,7 +19,7 @@ use crate::stack::Stack;
 use evaluate::Inputs;
 
 /// Info about a neuron in a genome.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NeuronInfo {
     subgenome_range: Range<usize>,
     depth: usize,
@@ -67,23 +67,10 @@ pub struct Network {
 
 impl Network {
     pub fn new(genome: Vec<Gene>, activation: Activation) -> Result<Self, Error> {
-        let next_neuron_id = genome
-            .iter()
-            .filter_map(|g| {
-                if let Gene::Neuron(neuron) = g {
-                    Some(neuron.id().as_usize())
-                } else {
-                    None
-                }
-            })
-            .max()
-            .map(|id| id + 1)
-            .unwrap_or(0);
-
         let mut network = Self {
             genome,
             activation,
-            next_neuron_id,
+            next_neuron_id: 0,
             neuron_info: HashMap::new(),
             num_inputs: 0,
             num_outputs: 0,
@@ -183,6 +170,7 @@ impl Network {
 
     /// Rebuilds the internal [`NeuronInfo`] map and other network metadata and checks the validity
     /// of the genome.
+    #[deny(clippy::integer_arithmetic, clippy::as_conversions)]
     fn rebuild_network_metadata(&mut self) -> Result<(), Error> {
         // O(n)
         if self.genome.is_empty() {
@@ -197,12 +185,16 @@ impl Network {
         // A list of (jumper index, parent depth, source id) to check the validity of all forward
         // jumpers after `neuron_info` is completed
         let mut forward_jumper_checks = Vec::new();
+        // A list of (jumper index, source id) to check the validity of all recurrent jumpers after
+        // `neuron_info` is completed
+        let mut recurrent_jumper_checks = Vec::new();
         let mut max_input_id = None;
+        let mut max_neuron_id = None;
 
         for (i, gene) in self.genome.iter().enumerate() {
             let depth = stopping_points.len();
             // Each gene produces one output
-            counter += 1;
+            counter = counter.checked_add(1).ok_or(Error::Arithmetic)?;
 
             if let Gene::Neuron(neuron) = gene {
                 // Track the value of `counter` when encountering a new subgenome (neuron) so that
@@ -217,7 +209,12 @@ impl Network {
 
                 // Neuron genes consume a number of the following outputs equal to their required
                 // number of inputs
-                counter -= neuron.num_inputs() as isize;
+                let num_inputs = isize::try_from(neuron.num_inputs())?;
+                counter = counter.checked_sub(num_inputs).ok_or(Error::Arithmetic)?;
+
+                max_neuron_id = max_neuron_id
+                    .or(Some(0))
+                    .map(|max_id| max_id.max(neuron.id().as_usize()));
             } else {
                 // Subgenomes can only end on non-neuron genes
 
@@ -226,10 +223,16 @@ impl Network {
                     return Err(Error::NonNeuronOutput(i));
                 }
 
-                // Add forward jumper info to be checked later
-                if let Gene::ForwardJumper(forward) = gene {
-                    let parent_depth = depth - 1;
-                    forward_jumper_checks.push((i, parent_depth, forward.source_id()));
+                // Add jumper info to be checked later
+                match gene {
+                    Gene::ForwardJumper(forward) => {
+                        let parent_depth = depth.checked_sub(1).ok_or(Error::Arithmetic)?;
+                        forward_jumper_checks.push((i, parent_depth, forward.source_id()));
+                    }
+                    Gene::RecurrentJumper(recurrent) => {
+                        recurrent_jumper_checks.push((i, recurrent.source_id()))
+                    }
+                    _ => {}
                 }
 
                 // Check if `counter` has returned to its value from when any subgenomes started
@@ -241,7 +244,8 @@ impl Network {
                         return Err(Error::DuplicateNeuronId(existing_index, start_index, id));
                     }
 
-                    let subgenome_range = start_index..i + 1;
+                    let end_index = i.checked_add(1).ok_or(Error::Arithmetic)?;
+                    let subgenome_range = start_index..end_index;
                     neuron_info.insert(id, NeuronInfo::new(subgenome_range, depth));
                 }
 
@@ -261,15 +265,36 @@ impl Network {
         // Check that forward jumpers always connect parent neurons to source neurons of higher
         // depth
         for (jumper_index, parent_depth, source_id) in forward_jumper_checks {
-            if parent_depth >= neuron_info[&source_id].depth() {
-                return Err(Error::InvalidForwardJumper(jumper_index));
+            if let Some(source_info) = neuron_info.get(&source_id) {
+                if parent_depth >= source_info.depth() {
+                    return Err(Error::InvalidForwardJumper(jumper_index));
+                }
+            } else {
+                // Return an error if the jumper's source does not exist
+                return Err(Error::InvalidJumperSource(jumper_index, source_id));
+            }
+        }
+
+        // Check that the source of every recurrent jumper exists
+        for (jumper_index, source_id) in recurrent_jumper_checks {
+            if !neuron_info.contains_key(&source_id) {
+                return Err(Error::InvalidJumperSource(jumper_index, source_id));
             }
         }
 
         self.neuron_info = neuron_info;
+        // This unwrap is safe because genomes must have at least one neuron
+        self.next_neuron_id = max_neuron_id
+            .unwrap()
+            .checked_add(1)
+            .ok_or(Error::Arithmetic)?;
         // + 1 because input IDs start at zero, 0 if no IDs were found
-        self.num_inputs = max_input_id.map(|id| id + 1).unwrap_or(0);
-        self.num_outputs = counter as usize;
+        self.num_inputs = match max_input_id {
+            Some(id) => id.checked_add(1).ok_or(Error::Arithmetic)?,
+            None => 0,
+        };
+        // The validity checks above should guarantee the safety of this unwrap
+        self.num_outputs = usize::try_from(counter).unwrap();
 
         Ok(())
     }
@@ -365,4 +390,272 @@ fn update_stored_values(genome: &mut [Gene]) {
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use super::*;
+
+    fn get_file_path(file_name: &str) -> String {
+        format!("{}/test_data/{}", env!("CARGO_MANIFEST_DIR"), file_name)
+    }
+
+    fn bias() -> Gene {
+        Bias::new(1.0).into()
+    }
+
+    fn input(id: usize) -> Gene {
+        Input::new(InputId::new(id), 1.0).into()
+    }
+
+    fn neuron(id: usize, num_inputs: usize) -> Gene {
+        Neuron::new(NeuronId::new(id), num_inputs, 1.0).into()
+    }
+
+    fn forward(source_id: usize) -> Gene {
+        ForwardJumper::new(NeuronId::new(source_id), 1.0).into()
+    }
+
+    fn recurrent(source_id: usize) -> Gene {
+        RecurrentJumper::new(NeuronId::new(source_id), 1.0).into()
+    }
+
+    fn check_num_outputs(network: &Network) {
+        assert_eq!(
+            network.num_outputs(),
+            network
+                .neuron_info
+                .iter()
+                .filter(|(_, info)| info.depth == 0)
+                .count()
+        );
+    }
+
+    #[test]
+    fn test_inputs_outputs() {
+        let genome = vec![neuron(0, 2), input(0), bias()];
+        let net = Network::new(genome, Activation::Linear).unwrap();
+        assert_eq!(1, net.num_inputs());
+        assert_eq!(1, net.num_outputs());
+        check_num_outputs(&net);
+
+        let genome2 = vec![neuron(0, 3), input(0), bias(), input(2)];
+        let net2 = Network::new(genome2, Activation::Linear).unwrap();
+        assert_eq!(3, net2.num_inputs());
+        assert_eq!(1, net2.num_outputs());
+        check_num_outputs(&net2);
+
+        let genome3 = vec![neuron(0, 2), input(0), bias(), neuron(1, 1), input(1)];
+        let net3 = Network::new(genome3, Activation::Linear).unwrap();
+        assert_eq!(2, net3.num_inputs());
+        assert_eq!(2, net3.num_outputs());
+        check_num_outputs(&net3);
+    }
+
+    #[test]
+    fn test_neuron_info() {
+        let (net, _, ()) =
+            Network::load_file(get_file_path("test_network_multi_output.cge")).unwrap();
+
+        let expected: HashMap<_, _> = [
+            (NeuronId::new(0), NeuronInfo::new(0..5, 0)),
+            (NeuronId::new(1), NeuronInfo::new(1..4, 1)),
+            (NeuronId::new(2), NeuronInfo::new(5..9, 0)),
+            (NeuronId::new(3), NeuronInfo::new(9..14, 0)),
+            (NeuronId::new(4), NeuronInfo::new(11..14, 1)),
+        ]
+        .into_iter()
+        .collect();
+        assert_eq!(expected, net.neuron_info);
+    }
+
+    #[test]
+    fn test_clear_state() {
+        let (mut net, _, ()) =
+            Network::load_file(get_file_path("test_network_recurrent.cge")).unwrap();
+
+        let output = net.evaluate(&[]).unwrap().to_vec();
+        let output2 = net.evaluate(&[]).unwrap().to_vec();
+
+        assert_ne!(output, output2);
+
+        net.clear_state();
+        let output3 = net.evaluate(&[]).unwrap().to_vec();
+
+        assert_eq!(output, output3);
+    }
+
+    #[test]
+    fn test_next_neuron_id() {
+        let genome = vec![neuron(0, 2), input(1), neuron(1, 1), bias()];
+        let net = Network::new(genome, Activation::Linear).unwrap();
+
+        assert_eq!(2, net.next_neuron_id);
+
+        let genome2 = vec![neuron(2, 1), input(1)];
+        let net2 = Network::new(genome2, Activation::Linear).unwrap();
+
+        assert_eq!(3, net2.next_neuron_id);
+    }
+
+    #[test]
+    fn test_validate_valid() {
+        let genome = vec![neuron(0, 2), input(0), bias()];
+        assert!(Network::new(genome, Activation::Linear).is_ok());
+
+        let genome2 = vec![
+            neuron(0, 5),
+            input(0),
+            bias(),
+            forward(1),
+            recurrent(1),
+            neuron(1, 1),
+            input(1),
+        ];
+        assert!(Network::new(genome2, Activation::Linear).is_ok());
+    }
+
+    #[test]
+    fn test_validate_empty() {
+        let genome = vec![];
+        assert_eq!(
+            Network::new(genome, Activation::Linear).unwrap_err(),
+            Error::EmptyGenome
+        );
+    }
+
+    #[test]
+    fn test_validate_invalid_input_count() {
+        let genome = vec![neuron(0, 1), neuron(2, 0), input(0)];
+        assert_eq!(
+            Network::new(genome, Activation::Linear).unwrap_err(),
+            Error::InvalidInputCount(1, NeuronId::new(2))
+        );
+    }
+
+    #[test]
+    fn test_validate_not_enough_inputs() {
+        let genome = vec![neuron(0, 2), neuron(2, 1), input(0)];
+        assert_eq!(
+            Network::new(genome, Activation::Linear).unwrap_err(),
+            Error::NotEnoughInputs(0, NeuronId::new(0))
+        );
+
+        let genome2 = vec![neuron(1, 1)];
+        assert_eq!(
+            Network::new(genome2, Activation::Linear).unwrap_err(),
+            Error::NotEnoughInputs(0, NeuronId::new(1))
+        );
+
+        let genome3 = vec![neuron(2, 3), bias(), input(0)];
+        assert_eq!(
+            Network::new(genome3, Activation::Linear).unwrap_err(),
+            Error::NotEnoughInputs(0, NeuronId::new(2))
+        );
+    }
+
+    #[test]
+    fn test_validate_duplicate_neuron_id() {
+        let genome = vec![neuron(1, 2), input(1), neuron(1, 1), bias()];
+        assert_eq!(
+            Network::new(genome, Activation::Linear).unwrap_err(),
+            Error::DuplicateNeuronId(2, 0, NeuronId::new(1))
+        );
+
+        let genome2 = vec![
+            neuron(0, 2),
+            input(1),
+            neuron(1, 2),
+            bias(),
+            neuron(1, 1),
+            input(0),
+        ];
+        assert_eq!(
+            Network::new(genome2, Activation::Linear).unwrap_err(),
+            Error::DuplicateNeuronId(4, 2, NeuronId::new(1))
+        );
+    }
+
+    #[test]
+    fn test_validate_non_neuron_output() {
+        for gene in [bias(), input(0), forward(1), recurrent(1)] {
+            let genome = vec![gene];
+            assert_eq!(
+                Network::new(genome, Activation::Linear).unwrap_err(),
+                Error::NonNeuronOutput(0)
+            );
+        }
+
+        let genome2 = vec![neuron(0, 2), input(1), bias(), input(0)];
+        assert_eq!(
+            Network::new(genome2, Activation::Linear).unwrap_err(),
+            Error::NonNeuronOutput(3)
+        );
+
+        let genome3 = vec![bias(), neuron(0, 1), input(0)];
+        assert_eq!(
+            Network::new(genome3, Activation::Linear).unwrap_err(),
+            Error::NonNeuronOutput(0)
+        );
+    }
+
+    #[test]
+    fn test_validate_invalid_jumper_source() {
+        let genome = vec![neuron(0, 1), forward(3), neuron(1, 1), bias()];
+        assert_eq!(
+            Network::new(genome, Activation::Linear).unwrap_err(),
+            Error::InvalidJumperSource(1, NeuronId::new(3))
+        );
+
+        let genome2 = vec![neuron(0, 1), recurrent(2)];
+        assert_eq!(
+            Network::new(genome2, Activation::Linear).unwrap_err(),
+            Error::InvalidJumperSource(1, NeuronId::new(2))
+        );
+    }
+
+    #[test]
+    fn test_validate_invalid_forward_jumper() {
+        let genome = vec![neuron(0, 1), forward(0)];
+        assert_eq!(
+            Network::new(genome, Activation::Linear).unwrap_err(),
+            Error::InvalidForwardJumper(1)
+        );
+
+        let genome2 = vec![
+            neuron(0, 2),
+            neuron(1, 1),
+            input(0),
+            neuron(2, 1),
+            neuron(3, 1),
+            forward(1),
+        ];
+        assert_eq!(
+            Network::new(genome2, Activation::Linear).unwrap_err(),
+            Error::InvalidForwardJumper(5)
+        );
+    }
+
+    #[test]
+    fn test_validate_extreme_neuron_input_count() {
+        let genome = vec![neuron(usize::MAX, (usize::MAX / 2) + 1)];
+        assert_eq!(
+            Network::new(genome, Activation::Linear).unwrap_err(),
+            Error::Arithmetic
+        );
+    }
+
+    #[test]
+    fn test_validate_extreme_neuron_id() {
+        let genome = vec![neuron(usize::MAX, 1), bias()];
+        assert_eq!(
+            Network::new(genome, Activation::Linear).unwrap_err(),
+            Error::Arithmetic
+        );
+    }
+
+    #[test]
+    fn test_validate_extreme_input_id() {
+        let genome = vec![neuron(0, 1), input(usize::MAX)];
+        assert_eq!(
+            Network::new(genome, Activation::Linear).unwrap_err(),
+            Error::Arithmetic
+        );
+    }
 }

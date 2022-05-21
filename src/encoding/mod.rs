@@ -90,6 +90,7 @@ pub trait EncodingVersion<E>: Into<PortableCGE<E>> {
 
     /// Creates a [`PortableCGE`] from a network, its metadata, and the user-defined extra data,
     /// which can be set to `()` if unused.
+    #[allow(clippy::new_ret_no_self)]
     fn new(network: &Network, metadata: Self::Metadata, extra: E) -> PortableCGE<E>;
 
     /// Converts `self` into a [`Network`][crate::Network], its metadata, and the user-defined

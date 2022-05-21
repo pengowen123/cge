@@ -211,11 +211,7 @@ mod tests {
         let inputs = [2.0, 3.0];
         let output = net.evaluate(&inputs).unwrap().to_vec();
 
-        let expected = [
-            3.541362029170628,
-            3.2752704637145316,
-            1.1087918551621792,
-        ];
+        let expected = [3.541362029170628, 3.2752704637145316, 1.1087918551621792];
 
         assert_eq!(expected.len(), output.len());
         for i in 0..3 {
