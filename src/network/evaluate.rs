@@ -145,3 +145,122 @@ pub fn evaluate_slice<'s>(
         stack.push(weight * value);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use assert_approx_eq::assert_approx_eq;
+
+    use super::*;
+    use crate::Network;
+
+    fn get_file_path(file_name: &str) -> String {
+        format!("{}/test_data/{}", env!("CARGO_MANIFEST_DIR"), file_name)
+    }
+
+    #[test]
+    fn test_evaluate_full() {
+        let (mut net, _, ()) = Network::load_file(get_file_path("test_network_v1.cge")).unwrap();
+
+        let output = net.evaluate(&[1.0, 1.0]).unwrap();
+        assert_eq!(output.len(), 1);
+        assert_eq!(output[0], 1.014);
+
+        let output2 = net.evaluate(&[0.0, 0.0]).unwrap();
+        assert_eq!(output2.len(), 1);
+        assert_eq!(output2[0], 0.40056);
+    }
+
+    #[test]
+    fn test_inputs() {
+        let (mut net, _, ()) = Network::load_file(get_file_path("test_network_v1.cge")).unwrap();
+
+        // Extra inputs should be discarded
+        let output = net.evaluate(&[1.0, 1.0, 2.0, 3.0]).unwrap();
+        assert_eq!(output.len(), 1);
+        assert_eq!(output[0], 1.014);
+
+        let output2 = net.evaluate(&[0.0, 0.0, 2.0, 3.0]).unwrap();
+        assert_eq!(output2.len(), 1);
+        assert_eq!(output2[0], 0.40056);
+
+        // Too few inputs returns `None`
+        assert!(net.evaluate(&[1.0]).is_none());
+    }
+
+    #[test]
+    fn test_activation() {
+        let (mut net, _, ()) = Network::load_file(get_file_path("test_network_v1.cge")).unwrap();
+
+        // Check that the activation function is being applied
+        net.set_activation(Activation::Tanh);
+
+        let output = net.evaluate(&[1.0, 1.0]).unwrap();
+        assert_eq!(output.len(), 1);
+        assert_approx_eq!(output[0], 0.3913229613565932);
+
+        let output2 = net.evaluate(&[0.0, 0.0]).unwrap();
+        assert_eq!(output2.len(), 1);
+        assert_approx_eq!(output2[0], 0.11798552468976746);
+    }
+
+    #[test]
+    fn test_multiple_outputs() {
+        let (mut net, _, ()) =
+            Network::load_file(get_file_path("test_network_multi_output.cge")).unwrap();
+
+        let inputs = [2.0, 3.0];
+        let output = net.evaluate(&inputs).unwrap().to_vec();
+
+        let expected = [
+            3.541362029170628,
+            3.2752704637145316,
+            1.1087918551621792,
+        ];
+
+        assert_eq!(expected.len(), output.len());
+        for i in 0..3 {
+            assert_approx_eq!(expected[i], output[i]);
+        }
+
+        // There are no recurrent connections, so the output should remain constant
+        let output2 = net.evaluate(&inputs).unwrap();
+        assert_eq!(output, output2);
+    }
+
+    #[test]
+    fn test_forward_jumper_cached() {
+        let (mut net, _, ()) = Network::load_file(get_file_path("test_network_v1.cge")).unwrap();
+
+        for gene in &mut net.genome {
+            if let Gene::Neuron(neuron) = gene {
+                // Insert dummy cached values
+                neuron.set_current_value(Some(100.0));
+            }
+        }
+
+        // Make sure they are used
+        // They will be overwritten when each subnetwork is actually evaluated, but the only forward
+        // jumper in the genome comes before its source subnetwork, so the dummy value will be used
+        // before being overwritten
+        let output = net.evaluate(&[0.0, 0.0]).unwrap();
+        assert_eq!(output.len(), 1);
+        assert_eq!(output[0], 3.96);
+    }
+
+    #[test]
+    fn test_recurrent_previous_value() {
+        let (mut net, _, ()) =
+            Network::load_file(get_file_path("test_network_recurrent.cge")).unwrap();
+
+        // The recurrent jumper reads a previous value of zero despite the neuron already being
+        // evaluated by the time the jumper is reached
+        let output = net.evaluate(&[]).unwrap().to_vec();
+        assert_eq!(output.len(), 1);
+        assert_eq!(output[0], 1.0);
+
+        // The recurrent jumper now reads a non-zero previous value from the first evaluation
+        let output2 = net.evaluate(&[]).unwrap();
+        assert_eq!(output2.len(), 1);
+        assert_eq!(output2[0], 4.0);
+    }
+}

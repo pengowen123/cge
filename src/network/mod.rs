@@ -167,7 +167,7 @@ impl Network {
     /// let extra = ();
     /// let serializable = network.to_serializable(metadata, extra);
     ///
-    /// // Any format supported by `serde`` can be used here
+    /// // Any format supported by `serde` can be used here
     /// let string = serde_json::to_string(&serializable).unwrap();
     ///
     /// // Other formats can be used when deserializing as well
@@ -329,6 +329,11 @@ impl Network {
         self.activation
     }
 
+    /// Sets the activation function of this `Network`.
+    pub fn set_activation(&mut self, new: Activation) {
+        self.activation = new;
+    }
+
     /// Returns the number of inputs required by this `Network`.
     ///
     /// This is equal to one plus the highest input ID among [`Input`] genes in the network, which
@@ -353,41 +358,11 @@ fn update_stored_values(genome: &mut [Gene]) {
                     .current_value()
                     .expect("neuron's current value is not set"),
             );
+            neuron.set_current_value(None);
         }
     }
 }
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use super::*;
-
-    fn get_file_path(file_name: &str) -> String {
-        format!("{}/test_data/{}", env!("CARGO_MANIFEST_DIR"), file_name)
-    }
-
-    #[test]
-    fn test_evaluate() {
-        // Example network from the CGE paper
-        let (mut net, _, ()) = Network::load_file(get_file_path("test_network_v1.cge")).unwrap();
-        let output = net.evaluate(&vec![1.0, 1.0]).unwrap();
-        assert_eq!(output.len(), 1);
-        assert_eq!(output[0], 0.654);
-    }
-
-    #[test]
-    fn test_recurrent_previous_value() {
-        let (mut net, _, ()) =
-            Network::load_file(get_file_path("test_network_recurrent.cge")).unwrap();
-
-        // The recurrent jumper reads a previous value of zero despite the neuron already being
-        // evaluated by the time the jumper is reached
-        let output = net.evaluate(&[]).unwrap().to_vec();
-        assert_eq!(output.len(), 1);
-        assert_eq!(output[0], 1.0);
-
-        // The recurrent jumper now reads a non-zero previous value from the first evaluation
-        let output2 = net.evaluate(&[]).unwrap();
-        assert_eq!(output2.len(), 1);
-        assert_eq!(output2[0], 4.0);
-    }
 }
