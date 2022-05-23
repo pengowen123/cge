@@ -1,4 +1,4 @@
-//! The error type for creation of networks.
+//! Error types related to networks.
 
 use std::num::TryFromIntError;
 use std::{error, fmt};
@@ -79,3 +79,45 @@ impl From<TryFromIntError> for Error {
         Self::Arithmetic
     }
 }
+
+/// The reason why a mutation is invalid.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MutationError {
+    /// The parent neuron with the given ID does not exist.
+    InvalidParent,
+    /// The source neuron of a forward jumper or recurrent jumper gene does not exist.
+    InvalidJumperSource,
+    /// A forward jumper connection's parent neuron does not have a lesser depth than its source
+    /// neuron.
+    InvalidForwardJumper,
+    /// A new subnetwork has no inputs.
+    EmptySubnetwork,
+    /// The index of a gene removal is out of bounds.
+    RemoveInvalidIndex,
+    /// Attempted to remove a [`Neuron`][crate::gene::Neuron] gene.
+    RemoveNeuron,
+    /// Attempted to remove the only incoming connection of a [`Neuron`][crate::gene::Neuron] gene.
+    RemoveOnlyInput,
+    /// An arithmetic operation or conversion overflowed or underflowed while performing the
+    /// mutation.
+    Arithmetic,
+}
+
+impl fmt::Display for MutationError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::InvalidParent => write!(f, "invalid parent neuron ID"),
+            Self::InvalidJumperSource => write!(f, "jumper gene points to invalid neuron ID"),
+            Self::InvalidForwardJumper => write!(f, "invalid forward jumper connection"),
+            Self::EmptySubnetwork => write!(f, "subnetwork has no inputs"),
+            Self::RemoveInvalidIndex => write!(f, "removal index out of bounds"),
+            Self::RemoveNeuron => write!(f, "cannot remove a neuron gene"),
+            Self::RemoveOnlyInput => {
+                write!(f, "cannot remove only incoming connection gene of a neuron")
+            }
+            Self::Arithmetic => write!(f, "integer overflow/underflow"),
+        }
+    }
+}
+
+impl error::Error for MutationError {}

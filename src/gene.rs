@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 /// A bias gene.
 ///
 /// Adds a constant value to the network.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Bias {
     value: f64,
 }
@@ -39,7 +39,7 @@ impl InputId {
 /// An input gene.
 ///
 /// Adds a connection to one of the network inputs.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Input {
     // The ID of the network input referred to
     id: InputId,
@@ -81,7 +81,7 @@ impl NeuronId {
 /// A neuron gene.
 ///
 /// Takes some number of incoming connections and applies the activation function to their sum.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Neuron {
     // The ID of this neuron
     id: NeuronId,
@@ -102,9 +102,6 @@ pub struct Neuron {
 
 impl Neuron {
     /// Returns a new `Neuron` that takes `num_inputs` inputs and weights its output by `weight`.
-    ///
-    /// If specifying the neuron ID is unnecessary (i.e., when adding a new one to a network),
-    /// [`without_id`][Self::without_id] can be used instead.
     pub fn new(id: NeuronId, num_inputs: usize, weight: f64) -> Self {
         Self {
             id,
@@ -115,12 +112,6 @@ impl Neuron {
         }
     }
 
-    /// Like [`new`][Self::new], but uses a default ID. Useful when adding a new neuron to a
-    /// network, as specifying an ID is unnecessary in that case.
-    pub fn without_id(num_inputs: usize, weight: f64) -> Self {
-        Self::new(NeuronId::new(0), num_inputs, weight)
-    }
-
     /// Returns the id of this `Neuron`.
     pub fn id(&self) -> NeuronId {
         self.id
@@ -129,6 +120,11 @@ impl Neuron {
     /// Returns the number of inputs required by this `Neuron`.
     pub fn num_inputs(&self) -> usize {
         self.num_inputs
+    }
+
+    /// Sets the number of inputs required by this `Neuron`.
+    pub(crate) fn set_num_inputs(&mut self, num_inputs: usize) {
+        self.num_inputs = num_inputs;
     }
 
     /// Returns the weight of this `Neuron`.
@@ -157,7 +153,7 @@ impl Neuron {
 ///
 /// Adds a connection to the output of a source neuron with a higher depth than the parent neuron
 /// of the jumper.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ForwardJumper {
     // The ID of the source neuron
     source_id: NeuronId,
@@ -188,7 +184,7 @@ impl ForwardJumper {
 ///
 /// Adds a connection to the output from the previous network evaluation of a source neuron with
 /// any depth.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct RecurrentJumper {
     // The ID of the source neuron
     source_id: NeuronId,
@@ -217,7 +213,7 @@ impl RecurrentJumper {
 
 /// A single gene in a genome, which can be either a [`Bias`], [`Input`], [`Neuron`],
 /// [`ForwardJumper`], or [`RecurrentJumper`].
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind")]
 #[serde(rename_all = "lowercase")]
 pub enum Gene {
@@ -279,13 +275,61 @@ impl From<Neuron> for Gene {
 }
 
 impl From<ForwardJumper> for Gene {
-    fn from(forward_jumper: ForwardJumper) -> Self {
-        Self::ForwardJumper(forward_jumper)
+    fn from(forward: ForwardJumper) -> Self {
+        Self::ForwardJumper(forward)
     }
 }
 
 impl From<RecurrentJumper> for Gene {
-    fn from(recurrent_jumper: RecurrentJumper) -> Self {
-        Self::RecurrentJumper(recurrent_jumper)
+    fn from(recurrent: RecurrentJumper) -> Self {
+        Self::RecurrentJumper(recurrent)
+    }
+}
+
+/// Like [`Gene`], but cannot be a [`Neuron`] gene.
+#[derive(Clone, Debug, PartialEq)]
+pub enum NonNeuronGene {
+    /// See [`Bias`].
+    Bias(Bias),
+    /// See [`Input`].
+    Input(Input),
+    /// See [`ForwardJumper`].
+    ForwardJumper(ForwardJumper),
+    /// See [`RecurrentJumper`].
+    RecurrentJumper(RecurrentJumper),
+}
+
+impl From<Bias> for NonNeuronGene {
+    fn from(bias: Bias) -> Self {
+        Self::Bias(bias)
+    }
+}
+
+impl From<Input> for NonNeuronGene {
+    fn from(input: Input) -> Self {
+        Self::Input(input)
+    }
+}
+
+impl From<ForwardJumper> for NonNeuronGene {
+    fn from(forward: ForwardJumper) -> Self {
+        Self::ForwardJumper(forward)
+    }
+}
+
+impl From<RecurrentJumper> for NonNeuronGene {
+    fn from(recurrent: RecurrentJumper) -> Self {
+        Self::RecurrentJumper(recurrent)
+    }
+}
+
+impl From<NonNeuronGene> for Gene {
+    fn from(gene: NonNeuronGene) -> Self {
+        match gene {
+            NonNeuronGene::Bias(bias) => Self::Bias(bias),
+            NonNeuronGene::Input(input) => Self::Input(input),
+            NonNeuronGene::ForwardJumper(forward) => Self::ForwardJumper(forward),
+            NonNeuronGene::RecurrentJumper(recurrent) => Self::RecurrentJumper(recurrent),
+        }
     }
 }

@@ -2,7 +2,7 @@
 
 use std::ops;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Stack(Vec<f64>);
 
 impl ops::Deref for Stack {
