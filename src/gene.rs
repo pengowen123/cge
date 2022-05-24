@@ -20,6 +20,11 @@ impl Bias {
     pub fn value(&self) -> f64 {
         self.value
     }
+
+    /// Returns a mutable reference to the value of the `Bias`.
+    pub fn mut_value(&mut self) -> &mut f64 {
+        &mut self.value
+    }
 }
 
 /// The ID of a network input.
@@ -61,6 +66,11 @@ impl Input {
     /// Returns the weight of this `Input`.
     pub fn weight(&self) -> f64 {
         self.weight
+    }
+
+    /// Returns a mutable reference to the weight of this `Input`.
+    pub fn mut_weight(&mut self) -> &mut f64 {
+        &mut self.weight
     }
 }
 
@@ -132,6 +142,11 @@ impl Neuron {
         self.weight
     }
 
+    /// Returns a mutable reference to the weight of this `Neuron`.
+    pub fn mut_weight(&mut self) -> &mut f64 {
+        &mut self.weight
+    }
+
     pub(crate) fn current_value(&self) -> Option<f64> {
         self.current_value
     }
@@ -178,6 +193,11 @@ impl ForwardJumper {
     pub fn weight(&self) -> f64 {
         self.weight
     }
+
+    /// Returns a mutable reference to the weight of this `ForwardJumper`.
+    pub fn mut_weight(&mut self) -> &mut f64 {
+        &mut self.weight
+    }
 }
 
 /// A recurrent jumper gene.
@@ -209,6 +229,11 @@ impl RecurrentJumper {
     pub fn weight(&self) -> f64 {
         self.weight
     }
+
+    /// Returns a mutable reference to the weight of this `RecurrentJumper`.
+    pub fn mut_weight(&mut self) -> &mut f64 {
+        &mut self.weight
+    }
 }
 
 /// A single gene in a genome, which can be either a [`Bias`], [`Input`], [`Neuron`],
@@ -230,6 +255,28 @@ pub enum Gene {
 }
 
 impl Gene {
+    /// Returns the weight of this `Gene` or its value if it is a [`Bias`].
+    pub fn weight(&self) -> f64 {
+        match self {
+            Self::Bias(bias) => bias.value(),
+            Self::Input(input) => input.weight(),
+            Self::Neuron(neuron) => neuron.weight(),
+            Self::ForwardJumper(forward) => forward.weight(),
+            Self::RecurrentJumper(recurrent) => recurrent.weight(),
+        }
+    }
+
+    /// Returns a mutable reference to the weight of this `Gene` or its value if it is a [`Bias`].
+    pub(crate) fn mut_weight(&mut self) -> &mut f64 {
+        match self {
+            Self::Bias(bias) => bias.mut_value(),
+            Self::Input(input) => input.mut_weight(),
+            Self::Neuron(neuron) => neuron.mut_weight(),
+            Self::ForwardJumper(forward) => forward.mut_weight(),
+            Self::RecurrentJumper(recurrent) => recurrent.mut_weight(),
+        }
+    }
+
     /// Returns whether this is a [`Bias`] gene.
     pub fn is_bias(&self) -> bool {
         matches!(self, Self::Bias(_))

@@ -1,7 +1,8 @@
 //! Error types related to networks.
 
+use std::error;
+use std::fmt::{self, Debug};
 use std::num::TryFromIntError;
-use std::{error, fmt};
 
 use crate::gene::NeuronId;
 
@@ -121,3 +122,14 @@ impl fmt::Display for MutationError {
 }
 
 impl error::Error for MutationError {}
+
+#[derive(Clone, Debug)]
+pub struct MismatchedLengthsError;
+
+impl fmt::Display for MismatchedLengthsError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        Debug::fmt(self, f)
+    }
+}
+
+impl error::Error for MismatchedLengthsError {}

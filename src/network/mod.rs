@@ -3,7 +3,7 @@
 mod error;
 mod evaluate;
 
-pub use error::{Error, MutationError};
+pub use error::{Error, MismatchedLengthsError, MutationError};
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -440,7 +440,7 @@ impl Network {
     }
 
     /// Returns an iterator over all neuron IDs in the `Network`.
-    pub fn iter_neuron_ids(&self) -> impl Iterator<Item = NeuronId> + '_ {
+    pub fn neuron_ids(&self) -> impl Iterator<Item = NeuronId> + '_ {
         self.neuron_info.keys().cloned()
     }
 
@@ -471,6 +471,30 @@ impl Network {
     /// Returns the ID to be used for the next neuron added to this `Network`.
     pub fn next_neuron_id(&self) -> NeuronId {
         NeuronId::new(self.next_neuron_id)
+    }
+
+    /// Returns an iterator over the gene weights.
+    pub fn weights(&self) -> impl Iterator<Item = f64> + '_ {
+        self.genome.iter().map(Gene::weight)
+    }
+
+    /// Returns a mutable iterator over the gene weights.
+    pub fn mut_weights(&mut self) -> impl Iterator<Item = &mut f64> {
+        self.genome.iter_mut().map(Gene::mut_weight)
+    }
+
+    /// Sets the gene weights to the provided values. Returns `Err` if
+    /// `weights.len() != self.genome.len()`.
+    pub fn set_weights(&mut self, weights: &[f64]) -> Result<(), MismatchedLengthsError> {
+        if weights.len() != self.genome.len() {
+            Err(MismatchedLengthsError)
+        } else {
+            for (old, new) in self.mut_weights().zip(weights) {
+                *old = *new;
+            }
+
+            Ok(())
+        }
     }
 
     /// Adds a non-neuron gene as an input to a `parent` [`Neuron`].
@@ -881,6 +905,19 @@ pub(crate) mod tests {
         assert_eq!(2, net4.num_inputs());
         assert_eq!(2, net4.num_outputs());
         check_num_outputs(&net4);
+    }
+
+    #[test]
+    fn test_set_weights() {
+        let genome = vec![neuron(0, 2), bias(), input(0)];
+        let mut net = Network::new(genome, Activation::Linear).unwrap();
+
+        assert!(net.set_weights(&[]).is_err());
+        assert!(net.set_weights(&[1.0, 2.0, 3.0, 4.0]).is_err());
+
+        assert_eq!(&[1.0; 3][..], net.weights().collect::<Vec<_>>());
+        net.set_weights(&[5.0, 6.0, 7.0]).unwrap();
+        assert_eq!(&[5.0, 6.0, 7.0][..], net.weights().collect::<Vec<_>>());
     }
 
     #[test]
@@ -1587,7 +1624,7 @@ pub(crate) mod tests {
     fn get_random_non_neuron(net: &mut Network) -> NonNeuronGene {
         let mut rng = rand::thread_rng();
 
-        let mut ids = net.iter_neuron_ids().collect::<Vec<_>>();
+        let mut ids = net.neuron_ids().collect::<Vec<_>>();
 
         // Add the neuron ID of the subnetwork being added (will be invalid if none is
         // being added)
