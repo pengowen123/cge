@@ -38,57 +38,48 @@ pub fn evaluate_slice<'s>(
         let weight;
         let value;
 
-        if genome[gene_index].is_input() {
-            if let Gene::Input(input) = &genome[gene_index] {
-                // If it is an input gene, push the corresponding input value and the gene's weight
-                // onto the stack
-                weight = input.weight();
-                value = inputs[input.id()];
-            } else {
-                unreachable!();
-            }
+        if genome[gene_index].is_bias() {
+            // If it is a bias gene, push 1.0 and the gene's weight onto the stack
+            let bias = genome[gene_index].as_bias().unwrap();
+            weight = bias.value();
+            value = 1.0;
+        } else if genome[gene_index].is_input() {
+            // If it is an input gene, push the corresponding input value and the gene's weight
+            // onto the stack
+            let input = genome[gene_index].as_input().unwrap();
+            weight = input.weight();
+            value = inputs[input.id()];
         } else if genome[gene_index].is_neuron() {
-            if let Gene::Neuron(neuron) = &mut genome[gene_index] {
-                // If it is a neuron gene, pop the number of required inputs off the stack, and push
-                // the sum of these inputs passed through the activation function and the gene's
-                // weight onto the stack
-                let sum_inputs = stack
-                    .pop_sum(neuron.num_inputs())
-                    .expect("A neuron did not receive enough inputs");
+            let neuron = genome[gene_index].as_mut_neuron().unwrap();
+            // If it is a neuron gene, pop the number of required inputs off the stack, and push
+            // the sum of these inputs passed through the activation function and the gene's
+            // weight onto the stack
+            let sum_inputs = stack
+                .pop_sum(neuron.num_inputs())
+                .expect("A neuron did not receive enough inputs");
 
-                // Apply the activation function
-                value = activation.apply(sum_inputs);
+            // Apply the activation function
+            value = activation.apply(sum_inputs);
 
-                // Update the neuron's current value (unweighted)
-                neuron.set_current_value(Some(value));
+            // Update the neuron's current value (unweighted)
+            neuron.set_current_value(Some(value));
 
-                if i == 0 && ignore_final_neuron_weight {
-                    // Ignore weight for the final neuron in the genome if the flag is set
-                    weight = 1.0;
-                } else {
-                    weight = neuron.weight();
-                }
+            if i == 0 && ignore_final_neuron_weight {
+                // Ignore weight for the final neuron in the genome if the flag is set
+                weight = 1.0;
             } else {
-                unreachable!();
+                weight = neuron.weight();
             }
         } else if genome[gene_index].is_forward_jumper() {
             // If it is a forward jumper gene, evaluate the subgenome of the source neuron and
             // push its output and the gene's weight onto the stack
-            let source_subgenome_range;
+            let forward = genome[gene_index].as_forward_jumper().unwrap();
+            let source_subgenome_range = neuron_info[&forward.source_id()].subgenome_range();
+            let source = genome[source_subgenome_range.start].as_neuron().unwrap();
 
-            if let Gene::ForwardJumper(forward) = &genome[gene_index] {
-                source_subgenome_range = neuron_info[&forward.source_id()].subgenome_range();
-                weight = forward.weight();
-            } else {
-                unreachable!();
-            }
+            weight = forward.weight();
 
-            let subgenome_root = match &genome[source_subgenome_range.start] {
-                Gene::Neuron(neuron) => neuron,
-                _ => panic!("forward jumper source is not a neuron"),
-            };
-
-            let subgenome_output = if let Some(cached) = subgenome_root.current_value() {
+            let subgenome_output = if let Some(cached) = source.current_value() {
                 cached
             } else {
                 // NOTE: This is somewhat inefficient because it can run the neuron evaluation code
@@ -114,29 +105,14 @@ pub fn evaluate_slice<'s>(
 
             value = subgenome_output;
         } else if genome[gene_index].is_recurrent_jumper() {
-            if let Gene::RecurrentJumper(recurrent) = &genome[gene_index] {
-                // If it is a recurrent jumper gene, push the previous value of the source neuron
-                // and the gene's weight onto the stack
-                let index = neuron_info[&recurrent.source_id()].subgenome_range().start;
-                let source_gene = &genome[index];
+            // If it is a recurrent jumper gene, push the previous value of the source neuron
+            // and the gene's weight onto the stack
+            let recurrent = genome[gene_index].as_recurrent_jumper().unwrap();
+            let source_index = neuron_info[&recurrent.source_id()].subgenome_range().start;
+            let source = genome[source_index].as_neuron().unwrap();
 
-                weight = recurrent.weight();
-                if let Gene::Neuron(neuron) = source_gene {
-                    value = neuron.previous_value();
-                } else {
-                    panic!("recurrent jumper did not point to a neuron");
-                }
-            } else {
-                unreachable!();
-            }
-        } else if genome[gene_index].is_bias() {
-            if let Gene::Bias(bias) = &genome[gene_index] {
-                // If it is a bias gene, push 1.0 and the gene's weight onto the stack
-                weight = bias.value();
-                value = 1.0;
-            } else {
-                unreachable!();
-            }
+            weight = recurrent.weight();
+            value = source.previous_value();
         } else {
             unreachable!();
         }

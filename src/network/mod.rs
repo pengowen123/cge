@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use std::collections::HashMap;
 use std::iter;
-use std::ops::Range;
+use std::ops::{Index, Range};
 use std::path::Path;
 
 use crate::activation::*;
@@ -180,6 +180,37 @@ impl Network {
     #[deny(clippy::integer_arithmetic, clippy::as_conversions)]
     fn rebuild_metadata(&mut self) -> Result<(), Error> {
         // O(n)
+
+        // A stopping point to detect and handle the end of a previously-encountered subgenome
+        struct StoppingPoint {
+            // The counter value that signals the end of the subgenome
+            counter: isize,
+            // The ID of subgenome
+            id: NeuronId,
+            // The starting index of the subgenome
+            start_index: usize,
+            // The depth of the subgenome's root neuron
+            depth: usize,
+        }
+
+        // Info needed to check the validity of a forward jumper
+        struct ForwardJumperCheck {
+            // The index of the forward jumper gene
+            jumper_index: usize,
+            // The depth of the forward jumper's parent neuron
+            parent_depth: usize,
+            // The source ID of the forward jumper
+            source_id: NeuronId,
+        }
+
+        // Info needed to check the validity of a recurrent jumper
+        struct RecurrentJumperCheck {
+            // The index of the forward jumper gene
+            jumper_index: usize,
+            // The source ID of the forward jumper
+            source_id: NeuronId,
+        }
+
         if self.genome.is_empty() {
             return Err(Error::EmptyGenome);
         }
@@ -190,20 +221,19 @@ impl Network {
         let gene_parents = &mut self.gene_parents;
         gene_parents.clear();
         // Represents a stack of the current subgenomes being traversed
-        // (counter value at start, id, start index, depth)
         // The value at the top of the stack when encountering a gene is that gene's parent
-        let mut stopping_points: Vec<(isize, NeuronId, usize, usize)> = Vec::new();
-        // A list of (jumper index, parent depth, source id) to check the validity of all forward
-        // jumpers after `neuron_info` is completed
-        let mut forward_jumper_checks = Vec::new();
-        // A list of (jumper index, source id) to check the validity of all recurrent jumpers after
-        // `neuron_info` is completed
-        let mut recurrent_jumper_checks = Vec::new();
+        let mut stopping_points: Vec<StoppingPoint> = Vec::new();
+        // A list of info to check the validity of all forward jumpers after `neuron_info` is
+        // completed
+        let mut forward_jumper_checks: Vec<ForwardJumperCheck> = Vec::new();
+        // A list of info to check the validity of all recurrent jumpers after `neuron_info` is
+        // completed
+        let mut recurrent_jumper_checks: Vec<RecurrentJumperCheck> = Vec::new();
         let mut max_input_id = None;
         let mut max_neuron_id = None;
 
         for (i, gene) in self.genome.iter().enumerate() {
-            let parent = stopping_points.last().map(|&(_, id, ..)| id);
+            let parent = stopping_points.last().map(|p| p.id);
             let depth = stopping_points.len();
             // Each gene produces one output
             counter = counter.checked_add(1).ok_or(Error::Arithmetic)?;
@@ -214,7 +244,12 @@ impl Network {
                 // Track the value of `counter` when encountering a new subgenome (neuron) so that
                 // the end of the subgenome can be detected and handled
                 // The subgenome's starting index and depth are also added
-                stopping_points.push((counter, neuron.id(), i, depth));
+                stopping_points.push(StoppingPoint {
+                    counter,
+                    id: neuron.id(),
+                    start_index: i,
+                    depth,
+                });
 
                 // All neurons must have at least one input
                 if neuron.num_inputs() == 0 {
@@ -240,59 +275,65 @@ impl Network {
                 // Add jumper info to be checked later
                 match gene {
                     Gene::ForwardJumper(forward) => {
-                        let parent_depth = depth.checked_sub(1).ok_or(Error::Arithmetic)?;
-                        forward_jumper_checks.push((i, parent_depth, forward.source_id()));
+                        let parent_depth = depth.checked_sub(1).unwrap();
+                        forward_jumper_checks.push(ForwardJumperCheck {
+                            jumper_index: i,
+                            parent_depth,
+                            source_id: forward.source_id(),
+                        });
                     }
                     Gene::RecurrentJumper(recurrent) => {
-                        recurrent_jumper_checks.push((i, recurrent.source_id()))
+                        recurrent_jumper_checks.push(RecurrentJumperCheck {
+                            jumper_index: i,
+                            source_id: recurrent.source_id(),
+                        });
+                    }
+                    Gene::Input(input) => {
+                        max_input_id = max_input_id
+                            .or(Some(0))
+                            .map(|max_id| max_id.max(input.id().as_usize()));
                     }
                     _ => {}
                 }
 
                 // Check if `counter` has returned to its value from when any subgenomes started
-                while !stopping_points.is_empty() && stopping_points.last().unwrap().0 == counter {
-                    let (_, id, start_index, depth) = stopping_points.pop().unwrap();
+                while !stopping_points.is_empty() && stopping_points.last().unwrap().counter == counter {
+                    let stop = stopping_points.pop().unwrap();
 
-                    if let Some(existing) = neuron_info.get(&id) {
+                    if let Some(existing) = neuron_info.get(&stop.id) {
                         let existing_index = existing.subgenome_range().start;
-                        return Err(Error::DuplicateNeuronId(existing_index, start_index, id));
+                        return Err(Error::DuplicateNeuronId(existing_index, stop.start_index, stop.id));
                     }
 
-                    let end_index = i.checked_add(1).ok_or(Error::Arithmetic)?;
-                    let subgenome_range = start_index..end_index;
-                    neuron_info.insert(id, NeuronInfo::new(subgenome_range, depth));
-                }
-
-                if let Gene::Input(input) = gene {
-                    max_input_id = max_input_id
-                        .or(Some(0))
-                        .map(|max_id| max_id.max(input.id().as_usize()));
+                    let end_index = i.checked_add(1).unwrap();
+                    let subgenome_range = stop.start_index..end_index;
+                    neuron_info.insert(stop.id, NeuronInfo::new(subgenome_range, stop.depth));
                 }
             }
         }
 
         // If any subgenomes were not fully traversed, a neuron did not receive enough inputs
-        if let Some(&(_, id, index, _)) = stopping_points.last() {
-            return Err(Error::NotEnoughInputs(index, id));
+        if let Some(stop) = stopping_points.last() {
+            return Err(Error::NotEnoughInputs(stop.start_index, stop.id));
         }
 
         // Check that forward jumpers always connect parent neurons to source neurons of higher
         // depth
-        for (jumper_index, parent_depth, source_id) in forward_jumper_checks {
-            if let Some(source_info) = neuron_info.get(&source_id) {
-                if parent_depth >= source_info.depth() {
-                    return Err(Error::InvalidForwardJumper(jumper_index));
+        for check in forward_jumper_checks {
+            if let Some(source_info) = neuron_info.get(&check.source_id) {
+                if check.parent_depth >= source_info.depth() {
+                    return Err(Error::InvalidForwardJumper(check.jumper_index));
                 }
             } else {
                 // Return an error if the jumper's source does not exist
-                return Err(Error::InvalidJumperSource(jumper_index, source_id));
+                return Err(Error::InvalidJumperSource(check.jumper_index, check.source_id));
             }
         }
 
         // Check that the source of every recurrent jumper exists
-        for (jumper_index, source_id) in recurrent_jumper_checks {
-            if !neuron_info.contains_key(&source_id) {
-                return Err(Error::InvalidJumperSource(jumper_index, source_id));
+        for check in recurrent_jumper_checks {
+            if !neuron_info.contains_key(&check.source_id) {
+                return Err(Error::InvalidJumperSource(check.jumper_index, check.source_id));
             }
         }
 
@@ -452,9 +493,7 @@ impl Network {
         let parent_index = parent_info.subgenome_range().start;
 
         // The index at which the new gene sequence starts
-        let new_sequence_index = parent_index
-            .checked_add(1)
-            .ok_or(MutationError::Arithmetic)?;
+        let new_sequence_index = parent_index.checked_add(1).unwrap();
 
         // The ID of the new neuron if one is being added
         let new_neuron_id = subnetwork_weight.map(|_| NeuronId::new(self.next_neuron_id));
@@ -465,38 +504,23 @@ impl Network {
             parent
         };
         // The depth of the new neuron if one is being added
-        let new_neuron_depth = parent_info
-            .depth()
-            .checked_add(1)
-            .ok_or(MutationError::Arithmetic)?;
+        let new_neuron_depth = parent_info.depth().checked_add(1).unwrap();
 
         // The number of genes to be added to the genome
         let added_len = if new_neuron_id.is_some() {
             // One higher if a neuron is being added as well
-            genes
-                .len()
-                .checked_add(1)
-                .ok_or(MutationError::Arithmetic)?
+            genes.len().checked_add(1).unwrap()
         } else {
             genes.len()
         };
         // The updated number of inputs to the `parent` neuron
-        let new_parent_num_inputs = if let Gene::Neuron(neuron) = &self.genome[parent_index] {
-            if new_neuron_id.is_some() {
-                // The added subetwork is the only new input
-                neuron
-                    .num_inputs()
-                    .checked_add(1)
-                    .ok_or(MutationError::Arithmetic)?
-            } else {
-                // Otherwise, all genes in `genes` are new inputs
-                neuron
-                    .num_inputs()
-                    .checked_add(genes.len())
-                    .ok_or(MutationError::Arithmetic)?
-            }
+        let parent_neuron = self[parent_index].as_neuron().unwrap();
+        let new_parent_num_inputs = if new_neuron_id.is_some() {
+            // The added subetwork is the only new input
+            parent_neuron.num_inputs().checked_add(1).unwrap()
         } else {
-            panic!("neuron info map pointed to non-neuron");
+            // Otherwise, all genes in `genes` are new inputs
+            parent_neuron.num_inputs().checked_add(genes.len()).unwrap()
         };
         // Increment the next neuron ID if a new neuron was added
         let new_next_neuron_id = if let Some(id) = new_neuron_id {
@@ -540,14 +564,11 @@ impl Network {
                         }
 
                         if let Some(info) = ref_self.neuron_info.get(&forward.source_id()) {
-                            let mut parent_depth =
-                                ref_self.neuron_info.get(&parent).unwrap().depth();
+                            let mut parent_depth = ref_self[parent].depth();
                             // If adding a subnetwork, the parent is the subnetwork root, which has
                             // a depth of one higher than that of the `parent` argument given
                             if new_neuron_id.is_some() {
-                                parent_depth = parent_depth
-                                    .checked_add(1)
-                                    .ok_or(MutationError::Arithmetic)?;
+                                parent_depth = parent_depth.checked_add(1).unwrap();
                             }
                             if parent_depth >= info.depth() {
                                 return Err(MutationError::InvalidForwardJumper);
@@ -597,11 +618,10 @@ impl Network {
         }
 
         // Update parent neuron inputs
-        if let Gene::Neuron(neuron) = &mut self.genome[parent_index] {
-            neuron.set_num_inputs(new_parent_num_inputs);
-        } else {
-            unreachable!();
-        }
+        self.genome[parent_index]
+            .as_mut_neuron()
+            .unwrap()
+            .set_num_inputs(new_parent_num_inputs);
 
         // Insert the genes
         let genes_len = genes.len();
@@ -641,22 +661,16 @@ impl Network {
             }
 
             let parent_id = self.gene_parents[index].unwrap();
-            let parent_index = self.neuron_info[&parent_id].subgenome_range().start;
-            let parent = &mut self.genome[parent_index];
+            let parent_index = self[parent_id].subgenome_range().start;
+            let parent = self.genome[parent_index].as_mut_neuron().unwrap();
+            let num_inputs = parent.num_inputs();
 
-            if let Gene::Neuron(neuron) = parent {
-                let num_inputs = neuron.num_inputs();
-
-                // Check that the removed gene is not the only input to its parent
-                if num_inputs == 1 {
-                    return Err(MutationError::RemoveOnlyInput);
-                }
-
-                // Decrement the parent's number of inputs
-                neuron.set_num_inputs(num_inputs.checked_sub(1).unwrap());
-            } else {
-                panic!("neuron info map pointed to non-neuron");
+            if num_inputs == 1 {
+                return Err(MutationError::RemoveOnlyInput);
             }
+
+            // Update parent neuron
+            parent.set_num_inputs(num_inputs.checked_sub(1).unwrap());
 
             // Update metadata
             for (_, info) in &mut self.neuron_info {
@@ -694,7 +708,7 @@ impl Network {
         }
     }
 
-    /// Returns a list of indices of genes that are valid to remove with
+    /// Returns an iterator of indices of genes that are valid to remove with
     /// [`remove_non_neuron`][Self::remove_non_neuron].
     pub fn get_valid_removals<'a>(&'a self) -> impl Iterator<Item = usize> + 'a {
         self.genome
@@ -706,16 +720,11 @@ impl Network {
                 if gene.is_neuron() {
                     None
                 } else {
-                    let parent_index = self.neuron_info[&parent.unwrap()].subgenome_range().start;
-                    let new_parent_num_inputs =
-                        if let Gene::Neuron(neuron) = &self.genome[parent_index] {
-                            neuron.num_inputs()
-                        } else {
-                            panic!("neuron info map pointed to non-neuron")
-                        };
+                    let parent_index = self[parent.unwrap()].subgenome_range().start;
+                    let num_inputs = self[parent_index].as_neuron().unwrap().num_inputs();
 
                     // Genes that are the sole input of their parent neuron can't be removed
-                    if new_parent_num_inputs > 1 {
+                    if num_inputs > 1 {
                         Some(i)
                     } else {
                         None
@@ -724,8 +733,8 @@ impl Network {
             })
     }
 
-    /// Returns a list of neuron IDs with depths greater than `parent_depth`, which can be used as
-    /// sources for a [`ForwardJumper`] gene under a parent neuron with depth `parent_depth`.
+    /// Returns an iterator of neuron IDs with depths greater than `parent_depth`, which can be
+    /// used as sources for a [`ForwardJumper`] gene under a parent neuron with depth `parent_depth`.
     pub fn get_valid_forward_jumper_sources<'a>(
         &'a self,
         parent_depth: usize,
@@ -737,6 +746,20 @@ impl Network {
                 None
             }
         })
+    }
+}
+
+impl Index<usize> for Network {
+    type Output = Gene;
+    fn index(&self, idx: usize) -> &Self::Output {
+        &self.genome[idx]
+    }
+}
+
+impl Index<NeuronId> for Network {
+    type Output = NeuronInfo;
+    fn index(&self, idx: NeuronId) -> &Self::Output {
+        &self.neuron_info[&idx]
     }
 }
 
@@ -1498,7 +1521,7 @@ pub(crate) mod tests {
         ];
         let mut net = Network::new(genome, Activation::Linear).unwrap();
         let parent_id = NeuronId::new(1);
-        let parent_depth = net.neuron_info[&parent_id].depth();
+        let parent_depth = net[parent_id].depth();
         let valid_sources = net
             .get_valid_forward_jumper_sources(parent_depth)
             .collect::<Vec<_>>();

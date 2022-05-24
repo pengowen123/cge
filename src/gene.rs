@@ -254,6 +254,60 @@ impl Gene {
     pub fn is_recurrent_jumper(&self) -> bool {
         matches!(self, Self::RecurrentJumper(_))
     }
+
+    /// Returns a reference to the contained [`Bias`] if this is a bias gene.
+    pub fn as_bias(&self) -> Option<&Bias> {
+        if let Self::Bias(bias) = self {
+            Some(bias)
+        } else {
+            None
+        }
+    }
+
+    /// Returns a reference to the contained [`Input`] if this is an input gene.
+    pub fn as_input(&self) -> Option<&Input> {
+        if let Self::Input(input) = self {
+            Some(input)
+        } else {
+            None
+        }
+    }
+
+    /// Returns a reference to the contained [`Neuron`] if this is a neuron gene.
+    pub fn as_neuron(&self) -> Option<&Neuron> {
+        if let Self::Neuron(neuron) = self {
+            Some(neuron)
+        } else {
+            None
+        }
+    }
+
+    /// Returns a reference to the contained [`ForwardJumper`] if this is a forward jumper gene.
+    pub fn as_forward_jumper(&self) -> Option<&ForwardJumper> {
+        if let Self::ForwardJumper(forward) = self {
+            Some(forward)
+        } else {
+            None
+        }
+    }
+
+    /// Returns a reference to the contained [`RecurrentJumper`] if this is a recurrent jumper gene.
+    pub fn as_recurrent_jumper(&self) -> Option<&RecurrentJumper> {
+        if let Self::RecurrentJumper(recurrent) = self {
+            Some(recurrent)
+        } else {
+            None
+        }
+    }
+
+    /// Returns a mutable reference to the contained [`Neuron`] if this is a neuron gene.
+    pub(crate) fn as_mut_neuron(&mut self) -> Option<&mut Neuron> {
+        if let Self::Neuron(neuron) = self {
+            Some(neuron)
+        } else {
+            None
+        }
+    }
 }
 
 impl From<Bias> for Gene {
