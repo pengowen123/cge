@@ -442,7 +442,7 @@ impl Network {
     ) -> Result<Option<NeuronId>, MutationError> {
         // O(n) on genes.len() + O(n) on the number of neurons in the genome
         if genes.is_empty() {
-            return Err(MutationError::EmptySubnetwork);
+            return Err(MutationError::Empty);
         }
 
         let parent_info = self
@@ -696,23 +696,25 @@ impl Network {
 
     /// Returns a list of indices of genes that are valid to remove with
     /// [`remove_non_neuron`][Self::remove_non_neuron].
-    pub fn get_valid_removals(&self) -> Vec<usize> {
+    pub fn get_valid_removals<'a>(&'a self) -> impl Iterator<Item = usize> + 'a {
         self.genome
             .iter()
             .zip(&self.gene_parents)
             .enumerate()
             .filter_map(|(i, (gene, parent))| {
+                // Neurons can't be removed
                 if gene.is_neuron() {
                     None
                 } else {
                     let parent_index = self.neuron_info[&parent.unwrap()].subgenome_range().start;
-                    let new_parent_num_inputs = if let Gene::Neuron(neuron) = &self.genome[parent_index]
-                    {
-                        neuron.num_inputs()
-                    } else {
-                        panic!("neuron info map pointed to non-neuron")
-                    };
+                    let new_parent_num_inputs =
+                        if let Gene::Neuron(neuron) = &self.genome[parent_index] {
+                            neuron.num_inputs()
+                        } else {
+                            panic!("neuron info map pointed to non-neuron")
+                        };
 
+                    // Genes that are the sole input of their parent neuron can't be removed
                     if new_parent_num_inputs > 1 {
                         Some(i)
                     } else {
@@ -720,20 +722,21 @@ impl Network {
                     }
                 }
             })
-            .collect()
     }
 
     /// Returns a list of neuron IDs with depths greater than `parent_depth`, which can be used as
     /// sources for a [`ForwardJumper`] gene under a parent neuron with depth `parent_depth`.
-    pub fn get_valid_forward_jumper_sources(&self, parent_depth: usize) -> Vec<NeuronId> {
-        self.neuron_info
-            .iter()
-            .filter_map(|(&id, info)| if info.depth() > parent_depth {
+    pub fn get_valid_forward_jumper_sources<'a>(
+        &'a self,
+        parent_depth: usize,
+    ) -> impl Iterator<Item = NeuronId> + 'a {
+        self.neuron_info.iter().filter_map(move |(&id, info)| {
+            if info.depth() > parent_depth {
                 Some(id)
             } else {
                 None
-            })
-            .collect()
+            }
+        })
     }
 }
 
@@ -753,7 +756,10 @@ fn update_stored_values(genome: &mut [Gene]) {
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use rand::prelude::*;
+
     use super::*;
+    use crate::encoding::Metadata;
 
     fn get_file_path(file_name: &str) -> String {
         format!("{}/test_data/{}", env!("CARGO_MANIFEST_DIR"), file_name)
@@ -1128,14 +1134,20 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn test_mutate_empty_subgenome() {
+    fn test_mutate_empty() {
         run_invalid_mutation_test(
             vec![neuron(0, 1), input(0)],
             |net| {
                 net.add_subnetwork(NeuronId::new(0), 1.0, vec![])
                     .map(|_| ())
             },
-            MutationError::EmptySubnetwork,
+            MutationError::Empty,
+        );
+
+        run_invalid_mutation_test(
+            vec![neuron(0, 1), input(0)],
+            |net| net.add_non_neurons(NeuronId::new(0), vec![]),
+            MutationError::Empty,
         );
     }
 
@@ -1199,6 +1211,7 @@ pub(crate) mod tests {
         let mutated_neuron_info = net.neuron_info.clone();
         let mutated_gene_parents = net.gene_parents.clone();
         let mutated_num_inputs = net.num_inputs();
+        let num_outputs = net.num_outputs;
         let mutated_next_neuron_id = net.next_neuron_id();
 
         assert_eq!(Ok(()), net.rebuild_metadata());
@@ -1206,6 +1219,7 @@ pub(crate) mod tests {
         assert_eq!(net.neuron_info, mutated_neuron_info);
         assert_eq!(net.gene_parents, mutated_gene_parents);
         assert_eq!(net.num_inputs(), mutated_num_inputs);
+        assert_eq!(num_outputs, net.num_outputs());
         assert_eq!(net.next_neuron_id(), mutated_next_neuron_id);
     }
 
@@ -1282,6 +1296,7 @@ pub(crate) mod tests {
                     bias(),
                     input(1),
                     forward(2),
+                    // This connection points to the to-be-added subnetwork
                     recurrent(net.next_neuron_id().as_usize()),
                 ];
                 net.add_subnetwork(NeuronId::new(0), 1.0, new_genes)
@@ -1451,14 +1466,11 @@ pub(crate) mod tests {
         ];
         let mut net = Network::new(genome, Activation::Linear).unwrap();
 
-        assert_eq!(
-            &[1, 4, 7][..],
-            net.get_valid_removals(),
-        );
+        assert_eq!(&[1, 4, 7][..], net.get_valid_removals().collect::<Vec<_>>());
 
         // Check that each index actually represents a valid removal
         loop {
-            let removals = net.get_valid_removals();
+            let removals = net.get_valid_removals().collect::<Vec<_>>();
 
             if removals.is_empty() {
                 check_mutated_metadata(&mut net);
@@ -1487,7 +1499,9 @@ pub(crate) mod tests {
         let mut net = Network::new(genome, Activation::Linear).unwrap();
         let parent_id = NeuronId::new(1);
         let parent_depth = net.neuron_info[&parent_id].depth();
-        let valid_sources = net.get_valid_forward_jumper_sources(parent_depth);
+        let valid_sources = net
+            .get_valid_forward_jumper_sources(parent_depth)
+            .collect::<Vec<_>>();
 
         for id in [NeuronId::new(3), NeuronId::new(4), NeuronId::new(5)] {
             assert!(valid_sources.contains(&id));
@@ -1506,6 +1520,121 @@ pub(crate) mod tests {
                 let forward: NonNeuronGene = forward(id);
                 assert!(net.add_non_neuron(parent_id, forward).is_err());
             }
+        }
+    }
+
+    /// Returns a random `NonNeuronGene`
+    fn get_random_non_neuron(net: &mut Network) -> NonNeuronGene {
+        let mut rng = rand::thread_rng();
+
+        let mut ids = net.iter_neuron_ids().collect::<Vec<_>>();
+
+        // Add the neuron ID of the subnetwork being added (will be invalid if none is
+        // being added)
+        ids.push(net.next_neuron_id());
+
+        match rng.gen_range(0..=3) {
+            0 => bias(),
+            1 => input(rng.gen_range(0..10)),
+            2 => {
+                let source = ids.choose(&mut rng).unwrap();
+                forward(source.as_usize())
+            }
+            3 => {
+                let source = ids.choose(&mut rng).unwrap();
+                recurrent(source.as_usize())
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    /// Tries to add a random non-neuron gene to the network
+    fn add_random_non_neuron(net: &mut Network, parent: NeuronId) {
+        let new_gene = get_random_non_neuron(net);
+        let _result = net.add_non_neuron(parent, new_gene);
+    }
+
+    /// Tries to add a random sequence of non-neuron genes to the network
+    fn add_random_non_neurons(net: &mut Network, parent: NeuronId) {
+        let mut rng = rand::thread_rng();
+        let count = rng.gen_range(0..=2);
+        let new_genes = (0..count).map(|_| get_random_non_neuron(net)).collect();
+
+        let _result = net.add_non_neurons(parent, new_genes);
+    }
+
+    /// Tries to add a random subnetwork to the network
+    fn add_random_subnetwork(net: &mut Network, parent: NeuronId) {
+        let mut rng = rand::thread_rng();
+        let num_inputs = rng.gen_range(0..=3);
+        let inputs = (0..num_inputs)
+            .map(|_| get_random_non_neuron(net))
+            .collect();
+
+        let _result = net.add_subnetwork(parent, 1.0, inputs);
+    }
+
+    /// Tries to remove a random gene from the network
+    fn remove_random_gene(net: &mut Network) {
+        let mut rng = rand::thread_rng();
+        let index = (0..=net.genome().len()).choose(&mut rng).unwrap();
+
+        let _result = net.remove_non_neuron(index);
+    }
+
+    /// Builds and tests a random network from the initial genome using mutation operators
+    /// Attempts invalid mutations in addition to valid ones, with a somewhat even split between
+    /// them
+    fn build_random_network(initial: Vec<Gene>) {
+        const MUTATION_COUNT: usize = 200;
+
+        let mut network = Network::new(initial, Activation::Linear).unwrap();
+        let initial_outputs = network.num_outputs();
+        let mut rng = rand::thread_rng();
+
+        for _ in 0..MUTATION_COUNT {
+            let parent = (0..=network.next_neuron_id().as_usize())
+                .choose(&mut rng)
+                .unwrap();
+            let parent = NeuronId::new(parent);
+
+            match rng.gen_range(0..=3) {
+                0 => add_random_non_neuron(&mut network, parent),
+                1 => add_random_non_neurons(&mut network, parent),
+                2 => add_random_subnetwork(&mut network, parent),
+                3 => remove_random_gene(&mut network),
+                _ => unreachable!(),
+            }
+
+            check_mutated_metadata(&mut network);
+
+            assert!(network.evaluate(&[1.0; 10]).is_some());
+            network.clear_state();
+        }
+
+        assert_eq!(initial_outputs, network.num_outputs());
+
+        let string = network.to_string(Metadata::new(None), ()).unwrap();
+        let (converted_network, _, ()) = Network::load_str(&string).unwrap();
+
+        network.stack.clear();
+        network.clear_state();
+        assert_eq!(converted_network, network);
+    }
+
+    #[test]
+    fn test_random() {
+        for _ in 0..10 {
+            build_random_network(vec![neuron(0, 1), input(0)]);
+            build_random_network(vec![neuron(0, 1), input(0), neuron(1, 1), input(1)]);
+            build_random_network(vec![
+                neuron(0, 1),
+                input(0),
+                neuron(1, 1),
+                input(1),
+                neuron(2, 1),
+                input(2),
+            ]);
         }
     }
 }
