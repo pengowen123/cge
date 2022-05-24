@@ -427,8 +427,33 @@ impl Network {
         self.num_outputs
     }
 
+    /// Returns an iterator over all neuron IDs in the `Network`.
     pub fn iter_neuron_ids<'a>(&'a self) -> impl Iterator<Item = NeuronId> + 'a {
         self.neuron_info.keys().cloned()
+    }
+
+    /// Returns the [`NeuronInfo`] corresponding to the [`Neuron`] with the given ID if the neuron
+    /// exists.
+    pub fn neuron_info(&self, id: NeuronId) -> Option<&NeuronInfo> {
+        self.neuron_info.get(&id)
+    }
+
+    /// Returns the [`Neuron`] metadata map that provides access to information such as the depth
+    /// and index range of each neuron in the `Network`.
+    pub fn neuron_info_map(&self) -> &HashMap<NeuronId, NeuronInfo> {
+        &self.neuron_info
+    }
+
+    /// Returns the ID of the parent [`Neuron`] of the gene at the index. Returns `None` if the
+    /// index is out of bounds. The inner `Option` represents the fact that not all genes have a
+    /// parent (only the output neurons of the `Network` have no parent).
+    pub fn parent_of(&self, index: usize) -> Option<Option<NeuronId>> {
+        self.gene_parents.get(index).cloned()
+    }
+
+    /// Returns the parent [`Neuron`] ID for each gene in the genome.
+    pub fn parents(&self) -> &[Option<NeuronId>] {
+        &self.gene_parents
     }
 
     /// Returns the ID to be used for the next neuron added to this `Network`.
