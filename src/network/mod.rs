@@ -13,7 +13,7 @@ use std::iter;
 use std::ops::{Index, Range};
 use std::path::Path;
 
-use crate::activation::*;
+use crate::activation::Activation;
 use crate::encoding::{self, CommonMetadata, EncodingVersion, MetadataVersion, PortableCGE};
 use crate::gene::*;
 use crate::stack::Stack;
@@ -297,12 +297,18 @@ impl Network {
                 }
 
                 // Check if `counter` has returned to its value from when any subgenomes started
-                while !stopping_points.is_empty() && stopping_points.last().unwrap().counter == counter {
+                while !stopping_points.is_empty()
+                    && stopping_points.last().unwrap().counter == counter
+                {
                     let stop = stopping_points.pop().unwrap();
 
                     if let Some(existing) = neuron_info.get(&stop.id) {
                         let existing_index = existing.subgenome_range().start;
-                        return Err(Error::DuplicateNeuronId(existing_index, stop.start_index, stop.id));
+                        return Err(Error::DuplicateNeuronId(
+                            existing_index,
+                            stop.start_index,
+                            stop.id,
+                        ));
                     }
 
                     let end_index = i.checked_add(1).unwrap();
@@ -326,14 +332,20 @@ impl Network {
                 }
             } else {
                 // Return an error if the jumper's source does not exist
-                return Err(Error::InvalidJumperSource(check.jumper_index, check.source_id));
+                return Err(Error::InvalidJumperSource(
+                    check.jumper_index,
+                    check.source_id,
+                ));
             }
         }
 
         // Check that the source of every recurrent jumper exists
         for check in recurrent_jumper_checks {
             if !neuron_info.contains_key(&check.source_id) {
-                return Err(Error::InvalidJumperSource(check.jumper_index, check.source_id));
+                return Err(Error::InvalidJumperSource(
+                    check.jumper_index,
+                    check.source_id,
+                ));
             }
         }
 
@@ -428,7 +440,7 @@ impl Network {
     }
 
     /// Returns an iterator over all neuron IDs in the `Network`.
-    pub fn iter_neuron_ids<'a>(&'a self) -> impl Iterator<Item = NeuronId> + 'a {
+    pub fn iter_neuron_ids(&self) -> impl Iterator<Item = NeuronId> + '_ {
         self.neuron_info.keys().cloned()
     }
 
@@ -626,7 +638,7 @@ impl Network {
         // `Network` in a partially updated state
 
         // Update neuron info map
-        for (_, info) in &mut self.neuron_info {
+        for info in self.neuron_info.values_mut() {
             if info.subgenome_range.start >= new_sequence_index {
                 info.subgenome_range.start += added_len;
                 info.subgenome_range.end += added_len;
@@ -679,7 +691,7 @@ impl Network {
     /// Removes and returns the non-neuron gene at the index if it is not the only input to its
     /// parent neuron.
     pub fn remove_non_neuron(&mut self, index: usize) -> Result<Gene, MutationError> {
-        // O(n) only to update_num_inputs, O(1) for everything else
+        // O(n) to update inputs + O(n) on number of neurons
         if let Some(removed_gene) = self.genome.get(index) {
             if removed_gene.is_neuron() {
                 return Err(MutationError::RemoveNeuron);
@@ -698,7 +710,7 @@ impl Network {
             parent.set_num_inputs(num_inputs.checked_sub(1).unwrap());
 
             // Update metadata
-            for (_, info) in &mut self.neuron_info {
+            for info in self.neuron_info.values_mut() {
                 if info.subgenome_range.start > index {
                     // Decrement the ranges of all subgenomes following the removed gene
                     info.subgenome_range.start = info.subgenome_range.start.checked_sub(1).unwrap();
@@ -735,7 +747,7 @@ impl Network {
 
     /// Returns an iterator of indices of genes that are valid to remove with
     /// [`remove_non_neuron`][Self::remove_non_neuron].
-    pub fn get_valid_removals<'a>(&'a self) -> impl Iterator<Item = usize> + 'a {
+    pub fn get_valid_removals(&self) -> impl Iterator<Item = usize> + '_ {
         self.genome
             .iter()
             .zip(&self.gene_parents)
@@ -760,10 +772,10 @@ impl Network {
 
     /// Returns an iterator of neuron IDs with depths greater than `parent_depth`, which can be
     /// used as sources for a [`ForwardJumper`] gene under a parent neuron with depth `parent_depth`.
-    pub fn get_valid_forward_jumper_sources<'a>(
-        &'a self,
+    pub fn get_valid_forward_jumper_sources(
+        &self,
         parent_depth: usize,
-    ) -> impl Iterator<Item = NeuronId> + 'a {
+    ) -> impl Iterator<Item = NeuronId> + '_ {
         self.neuron_info.iter().filter_map(move |(&id, info)| {
             if info.depth() > parent_depth {
                 Some(id)
