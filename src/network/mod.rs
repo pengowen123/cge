@@ -84,7 +84,7 @@ impl Network {
             stack: Stack::new(),
         };
 
-        network.rebuild_network_metadata()?;
+        network.rebuild_metadata()?;
 
         Ok(network)
     }
@@ -178,7 +178,7 @@ impl Network {
     /// Rebuilds the internal [`NeuronInfo`] map and other network metadata and checks the validity
     /// of the genome.
     #[deny(clippy::integer_arithmetic, clippy::as_conversions)]
-    fn rebuild_network_metadata(&mut self) -> Result<(), Error> {
+    fn rebuild_metadata(&mut self) -> Result<(), Error> {
         // O(n)
         if self.genome.is_empty() {
             return Err(Error::EmptyGenome);
@@ -386,6 +386,10 @@ impl Network {
         self.num_outputs
     }
 
+    pub fn iter_neuron_ids<'a>(&'a self) -> impl Iterator<Item = NeuronId> + 'a {
+        self.neuron_info.keys().cloned()
+    }
+
     /// Returns the ID to be used for the next neuron added to this `Network`.
     pub fn next_neuron_id(&self) -> NeuronId {
         NeuronId::new(self.next_neuron_id)
@@ -496,8 +500,7 @@ impl Network {
         };
         // Increment the next neuron ID if a new neuron was added
         let new_next_neuron_id = if let Some(id) = new_neuron_id {
-            id
-                .as_usize()
+            id.as_usize()
                 .checked_add(1)
                 .ok_or(MutationError::Arithmetic)?
         } else {
@@ -689,6 +692,48 @@ impl Network {
         } else {
             Err(MutationError::RemoveInvalidIndex)
         }
+    }
+
+    /// Returns a list of indices of genes that are valid to remove with
+    /// [`remove_non_neuron`][Self::remove_non_neuron].
+    pub fn get_valid_removals(&self) -> Vec<usize> {
+        self.genome
+            .iter()
+            .zip(&self.gene_parents)
+            .enumerate()
+            .filter_map(|(i, (gene, parent))| {
+                if gene.is_neuron() {
+                    None
+                } else {
+                    let parent_index = self.neuron_info[&parent.unwrap()].subgenome_range().start;
+                    let new_parent_num_inputs = if let Gene::Neuron(neuron) = &self.genome[parent_index]
+                    {
+                        neuron.num_inputs()
+                    } else {
+                        panic!("neuron info map pointed to non-neuron")
+                    };
+
+                    if new_parent_num_inputs > 1 {
+                        Some(i)
+                    } else {
+                        None
+                    }
+                }
+            })
+            .collect()
+    }
+
+    /// Returns a list of neuron IDs with depths greater than `parent_depth`, which can be used as
+    /// sources for a [`ForwardJumper`] gene under a parent neuron with depth `parent_depth`.
+    pub fn get_valid_forward_jumper_sources(&self, parent_depth: usize) -> Vec<NeuronId> {
+        self.neuron_info
+            .iter()
+            .filter_map(|(&id, info)| if info.depth() > parent_depth {
+                Some(id)
+            } else {
+                None
+            })
+            .collect()
     }
 }
 
@@ -1149,6 +1194,23 @@ pub(crate) mod tests {
         );
     }
 
+    /// Checks that the networks metadata does not change if a full rebuild is performed
+    fn check_mutated_metadata(net: &mut Network) {
+        let mutated_neuron_info = net.neuron_info.clone();
+        let mutated_gene_parents = net.gene_parents.clone();
+        let mutated_num_inputs = net.num_inputs();
+        let mutated_next_neuron_id = net.next_neuron_id();
+
+        assert_eq!(Ok(()), net.rebuild_metadata());
+
+        assert_eq!(net.neuron_info, mutated_neuron_info);
+        assert_eq!(net.gene_parents, mutated_gene_parents);
+        assert_eq!(net.num_inputs(), mutated_num_inputs);
+        assert_eq!(net.next_neuron_id(), mutated_next_neuron_id);
+    }
+
+    /// Creates a network from the genome, runs the mutation on it, and check that its genome and
+    /// metadata are correct
     fn run_mutation_test<O, F: Fn(&mut Network) -> O>(
         start_genome: Vec<Gene>,
         mutate: F,
@@ -1157,22 +1219,20 @@ pub(crate) mod tests {
         expected_next_neuron_id: NeuronId,
     ) {
         let mut network = Network::new(start_genome, Activation::Linear).unwrap();
+        let old_num_outputs = network.num_outputs();
 
         let _ = mutate(&mut network);
 
         assert_eq!(end_genome, network.genome());
         assert_eq!(expected_num_inputs, network.num_inputs());
+        assert_eq!(old_num_outputs, network.num_outputs());
         assert_eq!(expected_next_neuron_id, network.next_neuron_id());
 
         // Check that evaluation works and doesn't crash
         assert!(network.evaluate(&[1.0; 10]).is_some());
 
         // Check that the metadata is mutated in a way that is equivalent to rebuilding it
-        let mutated_neuron_info = network.neuron_info.clone();
-        let mutated_gene_parents = network.gene_parents.clone();
-        assert_eq!(Ok(()), network.rebuild_network_metadata());
-        assert_eq!(network.neuron_info, mutated_neuron_info);
-        assert_eq!(network.gene_parents, mutated_gene_parents);
+        check_mutated_metadata(&mut network);
     }
 
     #[test]
@@ -1375,5 +1435,77 @@ pub(crate) mod tests {
             2,
             NeuronId::new(3),
         );
+    }
+
+    #[test]
+    fn test_get_valid_removals() {
+        let genome = vec![
+            neuron(0, 3),
+            input(0),
+            neuron(1, 1),
+            neuron(2, 2),
+            input(1),
+            neuron(3, 1),
+            bias(),
+            forward(2),
+        ];
+        let mut net = Network::new(genome, Activation::Linear).unwrap();
+
+        assert_eq!(
+            &[1, 4, 7][..],
+            net.get_valid_removals(),
+        );
+
+        // Check that each index actually represents a valid removal
+        loop {
+            let removals = net.get_valid_removals();
+
+            if removals.is_empty() {
+                check_mutated_metadata(&mut net);
+                break;
+            }
+
+            net.remove_non_neuron(removals[0]).unwrap();
+
+            let _ = net.evaluate(&[2.0, 3.0]);
+        }
+    }
+
+    #[test]
+    fn test_get_valid_forward_jumper_sources() {
+        let genome = vec![
+            neuron(0, 2),
+            neuron(1, 1),
+            bias(),
+            neuron(2, 2),
+            neuron(3, 1),
+            neuron(4, 1),
+            bias(),
+            neuron(5, 1),
+            bias(),
+        ];
+        let mut net = Network::new(genome, Activation::Linear).unwrap();
+        let parent_id = NeuronId::new(1);
+        let parent_depth = net.neuron_info[&parent_id].depth();
+        let valid_sources = net.get_valid_forward_jumper_sources(parent_depth);
+
+        for id in [NeuronId::new(3), NeuronId::new(4), NeuronId::new(5)] {
+            assert!(valid_sources.contains(&id));
+        }
+        assert_eq!(3, valid_sources.len());
+
+        // Check that each source is actually valid
+        for id in &valid_sources {
+            let forward: NonNeuronGene = forward(id.as_usize());
+            assert!(net.add_non_neuron(parent_id, forward).is_ok());
+        }
+
+        // Check that each source not listed is actually invalid
+        for id in 0..net.neuron_info.len() {
+            if !valid_sources.contains(&NeuronId::new(id)) {
+                let forward: NonNeuronGene = forward(id);
+                assert!(net.add_non_neuron(parent_id, forward).is_err());
+            }
+        }
     }
 }
