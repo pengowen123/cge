@@ -2,13 +2,14 @@
 
 mod error;
 mod evaluate;
+mod utils;
 
-pub use error::{Error, MismatchedLengthsError, MutationError};
+pub use error::{Error, IndexOutOfBoundsError, MismatchedLengthsError, MutationError};
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::iter;
 use std::ops::{Index, Range};
 use std::path::Path;
@@ -63,6 +64,8 @@ pub struct Network {
     neuron_info: HashMap<NeuronId, NeuronInfo>,
     // Parent info for each gene
     gene_parents: Vec<Option<NeuronId>>,
+    // A de-duplicated list of neuron IDs corresponding to the network's recurrent state
+    recurrent_state_ids: Vec<NeuronId>,
     // The number of inputs required by the network (one plus the max input ID referred to)
     num_inputs: usize,
     // The number of network outputs
@@ -79,6 +82,7 @@ impl Network {
             next_neuron_id: 0,
             neuron_info: HashMap::new(),
             gene_parents: Vec::new(),
+            recurrent_state_ids: Vec::new(),
             num_inputs: 0,
             num_outputs: 0,
             stack: Stack::new(),
@@ -349,6 +353,8 @@ impl Network {
             }
         }
 
+        // Build the recurrent state IDs map
+        self.update_recurrent_state_ids();
         // This unwrap is safe because genomes must have at least one neuron
         self.next_neuron_id = max_neuron_id
             .unwrap()
@@ -381,7 +387,7 @@ impl Network {
         self.stack.clear();
 
         let inputs = Inputs(inputs);
-        let length = self.genome.len();
+        let length = self.len();
         evaluate::evaluate_slice(
             &mut self.genome,
             0..length,
@@ -405,14 +411,90 @@ impl Network {
     pub fn clear_state(&mut self) {
         for gene in &mut self.genome {
             if let Gene::Neuron(neuron) = gene {
-                neuron.set_previous_value(0.0);
+                *neuron.mut_previous_value() = 0.0;
             }
         }
+    }
+
+    /// Updates the list of neuron IDs corresponding to the network's recurrent state.
+    fn update_recurrent_state_ids(&mut self) {
+        let state_ids = &mut self.recurrent_state_ids;
+        state_ids.clear();
+        // Used for de-duplication
+        let mut unique_state_ids = HashSet::new();
+
+        for gene in &self.genome {
+            if let Gene::RecurrentJumper(recurrent) = gene {
+                let source_id = recurrent.source_id();
+                if unique_state_ids.insert(source_id) {
+                    state_ids.push(source_id);
+                }
+            }
+        }
+    }
+
+    /// Returns the length of the recurrent state of the [`Network`], which are the values stored
+    /// for use by [`RecurrentJumper`] genes.
+    pub fn recurrent_state_len(&self) -> usize {
+        self.recurrent_state_ids.len()
+    }
+
+    /// Returns an iterator over the recurrent state of the [`Network`], which are the values
+    /// stored for use by [`RecurrentJumper`] genes.
+    pub fn recurrent_state(&self) -> impl Iterator<Item = f64> + '_ {
+        self.recurrent_state_ids
+            .iter()
+            .map(|id| self.get_neuron(*id).unwrap().previous_value())
+    }
+
+    /// Maps `f` over the recurrent state of the [`Network`], which are the values stored for use by
+    /// [`RecurrentJumper`] genes. The first argument to `f` is the index of the state value being
+    /// accessed.
+    pub fn map_recurrent_state<F: FnMut(usize, &mut f64)>(&mut self, mut f: F) {
+        for (i, id) in self.recurrent_state_ids.iter().enumerate() {
+            let source = utils::get_mut_neuron(*id, &self.neuron_info, &mut self.genome).unwrap();
+            f(i, source.mut_previous_value());
+        }
+    }
+
+    /// Sets the recurrent state of the [`Network`], which are the values stored for use by
+    /// [`RecurrentJumper`] genes. Returns `Err` if the length of `state` does not equal the number
+    /// of recurrent state values stored by the [`Network`].
+    pub fn set_recurrent_state(&mut self, state: &[f64]) -> Result<(), MismatchedLengthsError> {
+        if state.len() != self.recurrent_state_ids.len() {
+            Err(MismatchedLengthsError)
+        } else {
+            self.map_recurrent_state(|i, val| *val = state[i]);
+            Ok(())
+        }
+    }
+
+    /// Sets a particular recurrent state value to `value`. The recurrent state consists of the
+    /// values stored for use by [`RecurrentJumper`] genes. Returns `Err` if the index is out of
+    /// bounds.
+    pub fn set_recurrent_state_at(
+        &mut self,
+        index: usize,
+        value: f64,
+    ) -> Result<(), IndexOutOfBoundsError> {
+        self.recurrent_state_ids
+            .get(index)
+            .map(|id| {
+                let source =
+                    utils::get_mut_neuron(*id, &self.neuron_info, &mut self.genome).unwrap();
+                *source.mut_previous_value() = value;
+            })
+            .ok_or(IndexOutOfBoundsError)
     }
 
     /// Returns the genome of this `Network`.
     pub fn genome(&self) -> &[Gene] {
         &self.genome
+    }
+
+    /// Returns the number of [`Gene`]s in the `Network`.
+    pub fn len(&self) -> usize {
+        self.genome.len()
     }
 
     /// Returns the activation function of this `Network`.
@@ -437,6 +519,26 @@ impl Network {
     /// Returns the number of outputs produced by this `Network` when evaluated.
     pub fn num_outputs(&self) -> usize {
         self.num_outputs
+    }
+
+    /// Returns the number of [`Neuron`] genes in the `Network`.
+    pub fn num_neurons(&self) -> usize {
+        self.neuron_info.len()
+    }
+
+    /// Returns whether the `Network` contains a [`Neuron`] with the given ID.
+    pub fn contains(&self, id: NeuronId) -> bool {
+        self.neuron_info.contains_key(&id)
+    }
+
+    /// Returns a reference to the [`Neuron`] with the given ID if it exists.
+    pub fn get_neuron(&self, id: NeuronId) -> Option<&Neuron> {
+        utils::get_neuron(id, &self.neuron_info, &self.genome)
+    }
+
+    /// Returns a mutable reference to the [`Neuron`] with the given ID if it exists.
+    pub(crate) fn get_mut_neuron(&mut self, id: NeuronId) -> Option<&mut Neuron> {
+        utils::get_mut_neuron(id, &self.neuron_info, &mut self.genome)
     }
 
     /// Returns an iterator over all neuron IDs in the `Network`.
@@ -484,9 +586,9 @@ impl Network {
     }
 
     /// Sets the gene weights to the provided values. Returns `Err` if
-    /// `weights.len() != self.genome.len()`.
+    /// `weights.len() != self.len()`.
     pub fn set_weights(&mut self, weights: &[f64]) -> Result<(), MismatchedLengthsError> {
-        if weights.len() != self.genome.len() {
+        if weights.len() != self.len() {
             Err(MismatchedLengthsError)
         } else {
             for (old, new) in self.mut_weights().zip(weights) {
@@ -542,7 +644,7 @@ impl Network {
         subnetwork_weight: Option<f64>,
         genes: Vec<NonNeuronGene>,
     ) -> Result<Option<NeuronId>, MutationError> {
-        // O(n) on genes.len() + O(n) on the number of neurons in the genome
+        // O(n)
         if genes.is_empty() {
             return Err(MutationError::Empty);
         }
@@ -695,6 +797,8 @@ impl Network {
             new_sequence_index..new_sequence_index,
             iter::repeat(Some(parent_of_new_inputs)).take(genes_len),
         );
+        // Rebuild the recurrent state IDs map
+        self.update_recurrent_state_ids();
         // Insert the new neuron at the front of the sequence if one is being added
         if let Some(weight) = subnetwork_weight {
             let num_inputs = genes_len;
@@ -715,15 +819,14 @@ impl Network {
     /// Removes and returns the non-neuron gene at the index if it is not the only input to its
     /// parent neuron.
     pub fn remove_non_neuron(&mut self, index: usize) -> Result<Gene, MutationError> {
-        // O(n) to update inputs + O(n) on number of neurons
+        // O(n)
         if let Some(removed_gene) = self.genome.get(index) {
             if removed_gene.is_neuron() {
                 return Err(MutationError::RemoveNeuron);
             }
 
             let parent_id = self.gene_parents[index].unwrap();
-            let parent_index = self[parent_id].subgenome_range().start;
-            let parent = self.genome[parent_index].as_mut_neuron().unwrap();
+            let parent = self.get_mut_neuron(parent_id).unwrap();
             let num_inputs = parent.num_inputs();
 
             if num_inputs == 1 {
@@ -763,7 +866,12 @@ impl Network {
 
             // Remove the gene
             self.gene_parents.remove(index);
-            Ok(self.genome.remove(index))
+            let removed = self.genome.remove(index);
+
+            // Update other metadata
+            self.update_recurrent_state_ids();
+
+            Ok(removed)
         } else {
             Err(MutationError::RemoveInvalidIndex)
         }
@@ -781,8 +889,7 @@ impl Network {
                 if gene.is_neuron() {
                     None
                 } else {
-                    let parent_index = self[parent.unwrap()].subgenome_range().start;
-                    let num_inputs = self[parent_index].as_neuron().unwrap().num_inputs();
+                    let num_inputs = self.get_neuron(parent.unwrap()).unwrap().num_inputs();
 
                     // Genes that are the sole input of their parent neuron can't be removed
                     if num_inputs > 1 {
@@ -828,11 +935,9 @@ impl Index<NeuronId> for Network {
 fn update_stored_values(genome: &mut [Gene]) {
     for gene in genome {
         if let Gene::Neuron(neuron) = gene {
-            neuron.set_previous_value(
-                neuron
-                    .current_value()
-                    .expect("neuron's current value is not set"),
-            );
+            *neuron.mut_previous_value() = neuron
+                .current_value()
+                .expect("neuron's current value is not set");
             neuron.set_current_value(None);
         }
     }
@@ -914,18 +1019,66 @@ pub(crate) mod tests {
 
         assert!(net.set_weights(&[]).is_err());
         assert!(net.set_weights(&[1.0, 2.0, 3.0, 4.0]).is_err());
-
         assert_eq!(&[1.0; 3][..], net.weights().collect::<Vec<_>>());
+
         net.set_weights(&[5.0, 6.0, 7.0]).unwrap();
         assert_eq!(&[5.0, 6.0, 7.0][..], net.weights().collect::<Vec<_>>());
     }
 
     #[test]
-    fn test_neuron_info() {
+    fn test_recurrent_state() {
+        let genome = vec![
+            neuron(0, 2),
+            recurrent(0),
+            neuron(1, 3),
+            neuron(2, 1),
+            recurrent(2),
+            recurrent(0),
+            recurrent(2),
+        ];
+        let mut net = Network::new(genome, Activation::Linear).unwrap();
+
+        // Only two unique neurons are referred to by recurrent jumpers
+        assert_eq!(2, net.recurrent_state_len());
+        assert_eq!(&[0.0, 0.0][..], &net.recurrent_state().collect::<Vec<_>>());
+
+        assert!(net.set_recurrent_state(&[]).is_err());
+        assert!(net.set_recurrent_state(&[1.0, 2.0, 3.0]).is_err());
+        assert_eq!(&[0.0, 0.0][..], &net.recurrent_state().collect::<Vec<_>>());
+
+        net.set_recurrent_state(&[2.0, 3.0]).unwrap();
+        assert_eq!(&[2.0, 3.0][..], &net.recurrent_state().collect::<Vec<_>>());
+        assert_eq!(2.0, net[0].as_neuron().unwrap().previous_value());
+        assert_eq!(3.0, net[3].as_neuron().unwrap().previous_value());
+
+        assert!(net.set_recurrent_state_at(2, 1.0).is_err());
+
+        net.set_recurrent_state_at(1, 5.0).unwrap();
+        assert_eq!(5.0, net[3].as_neuron().unwrap().previous_value());
+    }
+
+    #[test]
+    fn test_save_load_recurrent_state() {
+        let (mut net, _, ()) =
+            Network::load_file(get_file_path("test_network_recurrent.cge")).unwrap();
+
+        let _output = net.evaluate(&[]).unwrap();
+        let saved = net.recurrent_state().collect::<Vec<_>>();
+        let output2 = net.evaluate(&[]).unwrap().to_vec();
+
+        net.clear_state();
+        net.set_recurrent_state(&saved).unwrap();
+
+        let output3 = net.evaluate(&[]).unwrap().to_vec();
+        assert_eq!(output2, output3);
+    }
+
+    #[test]
+    fn test_rebuild_metadata() {
         let (net, _, ()) =
             Network::load_file(get_file_path("test_network_multi_output.cge")).unwrap();
 
-        let expected: HashMap<_, _> = [
+        let expected_neuron_info: HashMap<_, _> = [
             (NeuronId::new(0), NeuronInfo::new(0..5, 0)),
             (NeuronId::new(1), NeuronInfo::new(1..4, 1)),
             (NeuronId::new(2), NeuronInfo::new(5..9, 0)),
@@ -934,7 +1087,7 @@ pub(crate) mod tests {
         ]
         .into_iter()
         .collect();
-        assert_eq!(expected, net.neuron_info);
+        assert_eq!(expected_neuron_info, net.neuron_info);
 
         let expected_parents = vec![
             None,
@@ -953,6 +1106,7 @@ pub(crate) mod tests {
             Some(NeuronId::new(4)),
         ];
         assert_eq!(expected_parents, net.gene_parents);
+        assert!(net.recurrent_state_ids.is_empty());
     }
 
     #[test]
@@ -1307,6 +1461,7 @@ pub(crate) mod tests {
     fn check_mutated_metadata(net: &mut Network) {
         let mutated_neuron_info = net.neuron_info.clone();
         let mutated_gene_parents = net.gene_parents.clone();
+        let mutated_recurrent_state_ids = net.recurrent_state_ids.clone();
         let mutated_num_inputs = net.num_inputs();
         let num_outputs = net.num_outputs;
         let mutated_next_neuron_id = net.next_neuron_id();
@@ -1315,6 +1470,7 @@ pub(crate) mod tests {
 
         assert_eq!(net.neuron_info, mutated_neuron_info);
         assert_eq!(net.gene_parents, mutated_gene_parents);
+        assert_eq!(net.recurrent_state_ids, mutated_recurrent_state_ids);
         assert_eq!(net.num_inputs(), mutated_num_inputs);
         assert_eq!(num_outputs, net.num_outputs());
         assert_eq!(net.next_neuron_id(), mutated_next_neuron_id);
@@ -1469,8 +1625,8 @@ pub(crate) mod tests {
         );
 
         run_mutation_test(
-            vec![neuron(0, 2), neuron(1, 1), input(3), input(0)],
-            |net| assert_eq!(input::<Gene>(0), net.remove_non_neuron(3).unwrap()),
+            vec![neuron(0, 2), neuron(1, 1), input(3), recurrent(0)],
+            |net| assert_eq!(recurrent::<Gene>(0), net.remove_non_neuron(3).unwrap()),
             vec![neuron(0, 1), neuron(1, 1), input(3)],
             4,
             NeuronId::new(2),

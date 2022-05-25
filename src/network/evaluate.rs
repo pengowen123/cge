@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::ops::{Index, Range};
 
+use super::utils;
 use crate::activation::Activation;
 use crate::gene::{Gene, InputId, NeuronId};
 use crate::network::NeuronInfo;
@@ -108,8 +109,7 @@ pub fn evaluate_slice<'s>(
             // If it is a recurrent jumper gene, push the previous value of the source neuron
             // and the gene's weight onto the stack
             let recurrent = genome[gene_index].as_recurrent_jumper().unwrap();
-            let source_index = neuron_info[&recurrent.source_id()].subgenome_range().start;
-            let source = genome[source_index].as_neuron().unwrap();
+            let source = utils::get_neuron(recurrent.source_id(), neuron_info, genome).unwrap();
 
             weight = recurrent.weight();
             value = source.previous_value();

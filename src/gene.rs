@@ -159,8 +159,8 @@ impl Neuron {
         self.previous_value
     }
 
-    pub(crate) fn set_previous_value(&mut self, value: f64) {
-        self.previous_value = value;
+    pub(crate) fn mut_previous_value(&mut self) -> &mut f64 {
+        &mut self.previous_value
     }
 }
 

@@ -128,8 +128,22 @@ pub struct MismatchedLengthsError;
 
 impl fmt::Display for MismatchedLengthsError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        Debug::fmt(self, f)
+        write!(
+            f,
+            "length of source array does not equal length of target array"
+        )
     }
 }
 
 impl error::Error for MismatchedLengthsError {}
+
+#[derive(Clone, Debug)]
+pub struct IndexOutOfBoundsError;
+
+impl fmt::Display for IndexOutOfBoundsError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "index out of bounds")
+    }
+}
+
+impl error::Error for IndexOutOfBoundsError {}
