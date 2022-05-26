@@ -1,4 +1,4 @@
-//! An example of saving and loading a network to/from a file.
+//! An example of saving and loading a network to/from a file. Requires the `serde_json` feature.
 
 use cge::{Network, WithRecurrentState};
 

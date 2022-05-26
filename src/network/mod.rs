@@ -8,18 +8,22 @@ pub use error::{
     Error, IndexOutOfBoundsError, MismatchedLengthsError, MutationError, NotEnoughInputsError,
 };
 
+#[cfg(all(feature = "serde", feature = "serde_json"))]
 use serde::de::DeserializeOwned;
+#[cfg(all(feature = "serde", feature = "serde_json"))]
 use serde::{Deserialize, Serialize};
 
 use std::collections::{HashMap, HashSet};
 use std::iter;
 use std::ops::{Index, Range};
+#[cfg(all(feature = "serde", feature = "serde_json"))]
 use std::path::Path;
 
 use crate::activation::Activation;
-use crate::encoding::{
-    self, CommonMetadata, EncodingVersion, MetadataVersion, PortableCGE, WithRecurrentState,
-};
+#[cfg(feature = "serde")]
+use crate::encoding::{EncodingVersion, MetadataVersion, PortableCGE, WithRecurrentState};
+#[cfg(all(feature = "serde", feature = "serde_json"))]
+use crate::encoding::{self, CommonMetadata};
 use crate::gene::*;
 use crate::stack::Stack;
 use evaluate::Inputs;
@@ -102,6 +106,7 @@ impl Network {
     /// string. If no extra data is present, `E` can be set to `()`. If `with_state` is `true`, the
     /// network's recurrent state is loaded if it exists. If not loaded, it is initialized to all
     /// zeroes.
+    #[cfg(all(feature = "serde", feature = "serde_json"))]
     pub fn load_str<'a, E>(
         s: &'a str,
         with_state: WithRecurrentState,
@@ -116,6 +121,7 @@ impl Network {
     /// If no extra data is present, `E` can be set to `()`. If `with_state` is `true`, the
     /// network's recurrent state is loaded if it exists. If not loaded, it is initialized to all
     /// zeroes.
+    #[cfg(all(feature = "serde", feature = "serde_json"))]
     pub fn load_file<E, P>(
         path: P,
         with_state: WithRecurrentState,
@@ -133,6 +139,7 @@ impl Network {
     ///
     /// Using [`Metadata`][encoding::Metadata] will automatically use the latest encoding version,
     /// but a specific `Metadata` type can be used to select a specific version instead.
+    #[cfg(all(feature = "serde", feature = "serde_json"))]
     pub fn to_string<E, M>(
         &self,
         metadata: M,
@@ -154,6 +161,7 @@ impl Network {
     /// but a specific `Metadata` type can be used to select a specific version instead.
     ///
     /// Recursively creates missing directories if `create_dirs` is `true`.
+    #[cfg(all(feature = "serde", feature = "serde_json"))]
     pub fn to_file<E, M, P>(
         &self,
         metadata: M,
@@ -200,6 +208,7 @@ impl Network {
     /// let deserialized: PortableCGE<()> = serde_json::from_str(&string).unwrap();
     /// let (network, metadata, extra) = deserialized.build(WithRecurrentState(true)).unwrap();
     /// ```
+    #[cfg(feature = "serde")]
     pub fn to_serializable<E, M>(
         &self,
         metadata: M,

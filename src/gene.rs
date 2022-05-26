@@ -1,11 +1,13 @@
 //! Different types of genes that can be used in a network genome.
 
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 /// A bias gene.
 ///
 /// Adds a constant value to the network.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Bias {
     value: f64,
 }
@@ -28,7 +30,8 @@ impl Bias {
 }
 
 /// The ID of a network input.
-#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct InputId(usize);
 
 impl InputId {
@@ -44,7 +47,8 @@ impl InputId {
 /// An input gene.
 ///
 /// Adds a connection to one of the network inputs.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Input {
     // The ID of the network input referred to
     id: InputId,
@@ -75,7 +79,8 @@ impl Input {
 }
 
 /// The ID of a neuron in a network.
-#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct NeuronId(usize);
 
 impl NeuronId {
@@ -91,7 +96,8 @@ impl NeuronId {
 /// A neuron gene.
 ///
 /// Takes some number of incoming connections and applies the activation function to their sum.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Neuron {
     // The ID of this neuron
     id: NeuronId,
@@ -103,10 +109,10 @@ pub struct Neuron {
     weight: f64,
     // The unweighted value outputted by this neuron during the current network evaluation if it has
     // been calculated already
-    #[serde(skip)]
+    #[cfg_attr(feature = "serde", serde(skip))]
     current_value: Option<f64>,
     // The unweighted value outputted by this neuron during the previous network evaluation
-    #[serde(skip)]
+    #[cfg_attr(feature = "serde", serde(skip))]
     previous_value: f64,
 }
 
@@ -168,7 +174,8 @@ impl Neuron {
 ///
 /// Adds a connection to the output of a source neuron with a higher depth than the parent neuron
 /// of the jumper.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ForwardJumper {
     // The ID of the source neuron
     source_id: NeuronId,
@@ -204,7 +211,8 @@ impl ForwardJumper {
 ///
 /// Adds a connection to the output from the previous network evaluation of a source neuron with
 /// any depth.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct RecurrentJumper {
     // The ID of the source neuron
     source_id: NeuronId,
@@ -238,9 +246,10 @@ impl RecurrentJumper {
 
 /// A single gene in a genome, which can be either a [`Bias`], [`Input`], [`Neuron`],
 /// [`ForwardJumper`], or [`RecurrentJumper`].
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "kind")]
-#[serde(rename_all = "lowercase")]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(tag = "kind"))]
+#[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
 pub enum Gene {
     /// See [`Bias`].
     Bias(Bias),

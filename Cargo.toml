@@ -12,11 +12,17 @@ license = "GPL-3.0"
 documentation = "https://docs.rs/cge"
 repository = "https://github.com/pengowen123/cge"
 
-[dependencies]
-serde_json = "1.0"
+[features]
+default = ["serde", "serde_json"]
+serde_json = ["serde_json/default", "serde"]
+
+[dependencies.serde_json]
+version = "1.0"
+optional = true
 
 [dependencies.serde]
 version = "1.0"
+optional = true
 features = ["derive"]
 
 [dev-dependencies]

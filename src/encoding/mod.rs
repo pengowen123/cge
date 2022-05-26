@@ -1,6 +1,7 @@
 //! A portable encoding for `cge` [`Network`]s. See [`PortableCGE`].
 
 mod error;
+#[cfg(feature = "serde_json")]
 mod functions;
 pub mod v1;
 
@@ -9,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::Network;
 
 pub use error::Error;
+#[cfg(feature = "serde_json")]
 pub(crate) use functions::*;
 
 /// The latest metadata version.

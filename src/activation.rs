@@ -1,10 +1,12 @@
 //! Handling of neuron activation functions.
 
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 /// Represents which activation function to use when evaluating neurons.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
 pub enum Activation {
     /// Identity function. Outputs `x`.
     Linear,
