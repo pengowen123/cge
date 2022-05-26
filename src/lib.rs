@@ -12,4 +12,5 @@ pub mod network;
 mod stack;
 
 pub use self::activation::Activation;
+pub use self::encoding::WithRecurrentState;
 pub use self::network::Network;

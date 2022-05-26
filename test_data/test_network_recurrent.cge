@@ -28,6 +28,7 @@
         "value": 1.0
       }
     ],
+    "recurrent_state": null,
     "extra": null
   }
 }

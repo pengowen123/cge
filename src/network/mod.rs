@@ -15,7 +15,9 @@ use std::ops::{Index, Range};
 use std::path::Path;
 
 use crate::activation::Activation;
-use crate::encoding::{self, CommonMetadata, EncodingVersion, MetadataVersion, PortableCGE};
+use crate::encoding::{
+    self, CommonMetadata, EncodingVersion, MetadataVersion, PortableCGE, WithRecurrentState,
+};
 use crate::gene::*;
 use crate::stack::Stack;
 use evaluate::Inputs;
@@ -52,7 +54,8 @@ impl NeuronInfo {
 // NOTE: All `Network` objects must be fully valid, and all methods assume this to be true
 //       Any modifications to the genome must be matched with a validity check and corresponding
 //       updates to the metadata
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct Network {
     // The genes of the network
     genome: Vec<Gene>,
@@ -94,39 +97,56 @@ impl Network {
     }
 
     /// Loads a previously-saved network, its metadata, and the user-defined extra data from a
-    /// string. If no extra data is present, `E` can be set to `()`.
-    pub fn load_str<'a, E>(s: &'a str) -> Result<(Network, CommonMetadata, E), encoding::Error>
+    /// string. If no extra data is present, `E` can be set to `()`. If `with_state` is `true`, the
+    /// network's recurrent state is loaded if it exists. If not loaded, it is initialized to all
+    /// zeroes.
+    pub fn load_str<'a, E>(
+        s: &'a str,
+        with_state: WithRecurrentState,
+    ) -> Result<(Network, CommonMetadata, E), encoding::Error>
     where
         E: Deserialize<'a>,
     {
-        encoding::load_str(s)
+        encoding::load_str(s, with_state)
     }
 
     /// Loads a previously-saved network, its metadata, and the user-defined extra data from a file.
-    /// If no extra data is present, `E` can be set to `()`.
-    pub fn load_file<E, P>(path: P) -> Result<(Network, CommonMetadata, E), encoding::Error>
+    /// If no extra data is present, `E` can be set to `()`. If `with_state` is `true`, the
+    /// network's recurrent state is loaded if it exists. If not loaded, it is initialized to all
+    /// zeroes.
+    pub fn load_file<E, P>(
+        path: P,
+        with_state: WithRecurrentState,
+    ) -> Result<(Network, CommonMetadata, E), encoding::Error>
     where
         E: DeserializeOwned,
         P: AsRef<Path>,
     {
-        encoding::load_file(path)
+        encoding::load_file(path, with_state)
     }
 
     /// Saves this network, its metadata, and an arbitrary extra data type to a string. `()` can be
-    /// used if storing extra data is not needed.
+    /// used if storing extra data is not needed. The network's recurrent state is saved if
+    /// `with_state` is `true.`
     ///
     /// Using [`Metadata`][encoding::Metadata] will automatically use the latest encoding version,
     /// but a specific `Metadata` type can be used to select a specific version instead.
-    pub fn to_string<E, M>(&self, metadata: M, extra: E) -> Result<String, encoding::Error>
+    pub fn to_string<E, M>(
+        &self,
+        metadata: M,
+        extra: E,
+        with_state: WithRecurrentState,
+    ) -> Result<String, encoding::Error>
     where
         E: Serialize,
         M: MetadataVersion<E>,
     {
-        encoding::to_string(self.to_serializable(metadata, extra))
+        encoding::to_string(self.to_serializable(metadata, extra, with_state))
     }
 
     /// Saves this network, its metadata, and an arbitrary extra data type to a file. `()` can be
-    /// used if storing extra data is not needed.
+    /// used if storing extra data is not needed. The network's recurrent state is saved if
+    /// `with_state` is `true.`
     ///
     /// Using [`Metadata`][encoding::Metadata] will automatically use the latest encoding version,
     /// but a specific `Metadata` type can be used to select a specific version instead.
@@ -136,6 +156,7 @@ impl Network {
         &self,
         metadata: M,
         extra: E,
+        with_state: WithRecurrentState,
         path: P,
         create_dirs: bool,
     ) -> Result<(), encoding::Error>
@@ -144,11 +165,16 @@ impl Network {
         M: MetadataVersion<E>,
         P: AsRef<Path>,
     {
-        encoding::to_file(self.to_serializable(metadata, extra), path, create_dirs)
+        encoding::to_file(
+            self.to_serializable(metadata, extra, with_state),
+            path,
+            create_dirs,
+        )
     }
 
     /// Converts the network to a serializable format. This can be used to save it in a format other
-    /// than JSON. See [`PortableCGE`] for deserialization from different formats.
+    /// than JSON. See [`PortableCGE`] for deserialization from different formats. The network's
+    /// recurrent state is saved if `with_state` is `true.`
     ///
     /// # Examples
     ///
@@ -158,25 +184,30 @@ impl Network {
     /// #     Network::load_file(format!(
     /// #         "{}/test_data/test_network_v1.cge",
     /// #         env!("CARGO_MANIFEST_DIR")
-    /// #     )).unwrap();
-    /// use cge::encoding::{Metadata, PortableCGE};
+    /// #     ), WithRecurrentState(true)).unwrap();
+    /// use cge::encoding::{Metadata, PortableCGE, WithRecurrentState};
     ///
     /// let metadata = Metadata::new("a description".to_string());
     /// let extra = ();
-    /// let serializable = network.to_serializable(metadata, extra);
+    /// let serializable = network.to_serializable(metadata, extra, WithRecurrentState(true));
     ///
     /// // Any format supported by `serde` can be used here
     /// let string = serde_json::to_string(&serializable).unwrap();
     ///
     /// // Other formats can be used when deserializing as well
     /// let deserialized: PortableCGE<()> = serde_json::from_str(&string).unwrap();
-    /// let (network, metadata, extra) = deserialized.build().unwrap();
+    /// let (network, metadata, extra) = deserialized.build(WithRecurrentState(true)).unwrap();
     /// ```
-    pub fn to_serializable<E, M>(&self, metadata: M, extra: E) -> PortableCGE<E>
+    pub fn to_serializable<E, M>(
+        &self,
+        metadata: M,
+        extra: E,
+        with_state: WithRecurrentState,
+    ) -> PortableCGE<E>
     where
         M: MetadataVersion<E>,
     {
-        M::Data::new(self, metadata, extra)
+        M::Data::new(self, metadata, extra, with_state)
     }
 
     /// Rebuilds the internal [`NeuronInfo`] map and other network metadata and checks the validity
@@ -1059,8 +1090,11 @@ pub(crate) mod tests {
 
     #[test]
     fn test_save_load_recurrent_state() {
-        let (mut net, _, ()) =
-            Network::load_file(get_file_path("test_network_recurrent.cge")).unwrap();
+        let (mut net, _, ()) = Network::load_file(
+            get_file_path("test_network_recurrent.cge"),
+            WithRecurrentState(false),
+        )
+        .unwrap();
 
         let _output = net.evaluate(&[]).unwrap();
         let saved = net.recurrent_state().collect::<Vec<_>>();
@@ -1075,8 +1109,11 @@ pub(crate) mod tests {
 
     #[test]
     fn test_rebuild_metadata() {
-        let (net, _, ()) =
-            Network::load_file(get_file_path("test_network_multi_output.cge")).unwrap();
+        let (net, _, ()) = Network::load_file(
+            get_file_path("test_network_multi_output.cge"),
+            WithRecurrentState(false),
+        )
+        .unwrap();
 
         let expected_neuron_info: HashMap<_, _> = [
             (NeuronId::new(0), NeuronInfo::new(0..5, 0)),
@@ -1111,8 +1148,11 @@ pub(crate) mod tests {
 
     #[test]
     fn test_clear_state() {
-        let (mut net, _, ()) =
-            Network::load_file(get_file_path("test_network_recurrent.cge")).unwrap();
+        let (mut net, _, ()) = Network::load_file(
+            get_file_path("test_network_recurrent.cge"),
+            WithRecurrentState(false),
+        )
+        .unwrap();
 
         let output = net.evaluate(&[]).unwrap().to_vec();
         let output2 = net.evaluate(&[]).unwrap().to_vec();
@@ -1867,8 +1907,11 @@ pub(crate) mod tests {
 
         assert_eq!(initial_outputs, network.num_outputs());
 
-        let string = network.to_string(Metadata::new(None), ()).unwrap();
-        let (converted_network, _, ()) = Network::load_str(&string).unwrap();
+        let string = network
+            .to_string(Metadata::new(None), (), WithRecurrentState(true))
+            .unwrap();
+        let (converted_network, _, ()) =
+            Network::load_str(&string, WithRecurrentState(true)).unwrap();
 
         network.stack.clear();
         network.clear_state();

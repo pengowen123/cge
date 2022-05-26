@@ -13,6 +13,8 @@ pub enum Error {
     Io(io::Error),
     /// An error while constructing a [`Network`][crate::Network].
     CGE(network::Error),
+    /// An error while setting the recurrest state of a [`Network`][crate::Network].
+    RecurrentState(network::MismatchedLengthsError),
 }
 
 impl fmt::Display for Error {
@@ -21,6 +23,7 @@ impl fmt::Display for Error {
             Self::Serde(e) => write!(f, "de/serialization error: {}", e),
             Self::Io(e) => write!(f, "io error: {}", e),
             Self::CGE(e) => write!(f, "network error: {}", e),
+            Self::RecurrentState(e) => write!(f, "failed to set recurrent state: {}", e),
         }
     }
 }
@@ -31,6 +34,7 @@ impl error::Error for Error {
             Self::Serde(e) => Some(e),
             Self::Io(e) => Some(e),
             Self::CGE(e) => Some(e),
+            Self::RecurrentState(e) => Some(e),
         }
     }
 }
@@ -50,5 +54,11 @@ impl From<io::Error> for Error {
 impl From<network::Error> for Error {
     fn from(e: network::Error) -> Self {
         Self::CGE(e)
+    }
+}
+
+impl From<network::MismatchedLengthsError> for Error {
+    fn from(e: network::MismatchedLengthsError) -> Self {
+        Self::RecurrentState(e)
     }
 }

@@ -2,10 +2,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::{CommonMetadata, EncodingVersion, MetadataVersion, PortableCGE};
+use super::{CommonMetadata, EncodingVersion, MetadataVersion, PortableCGE, WithRecurrentState};
 use crate::activation::Activation;
 use crate::gene::Gene;
-use crate::network::{self, Network};
+use crate::Network;
 
 /// A type for encoding a [`Network`][crate::Network] and its metadata in version one of the
 /// format.
@@ -14,24 +14,45 @@ pub struct Data<E> {
     pub metadata: Metadata,
     pub activation: Activation,
     pub genome: Vec<Gene>,
+    pub recurrent_state: Option<Vec<f64>>,
     pub extra: E,
 }
 
 impl<E> EncodingVersion<E> for Data<E> {
     type Metadata = Metadata;
 
-    fn new(network: &Network, metadata: Self::Metadata, extra: E) -> PortableCGE<E> {
+    fn new(
+        network: &Network,
+        metadata: Self::Metadata,
+        extra: E,
+        with_state: WithRecurrentState,
+    ) -> PortableCGE<E> {
+        let recurrent_state = if with_state.0 {
+            Some(network.recurrent_state().collect())
+        } else {
+            None
+        };
         Self {
             metadata,
-            genome: network.genome().into(),
             activation: network.activation(),
+            genome: network.genome().into(),
+            recurrent_state,
             extra,
         }
         .into()
     }
 
-    fn build(self) -> Result<(Network, CommonMetadata, E), network::Error> {
-        let network = Network::new(self.genome, self.activation)?;
+    fn build(
+        self,
+        with_state: WithRecurrentState,
+    ) -> Result<(Network, CommonMetadata, E), super::Error> {
+        let mut network = Network::new(self.genome, self.activation)?;
+
+        if with_state.0 {
+            if let Some(state) = self.recurrent_state {
+                network.set_recurrent_state(&state)?;
+            }
+        }
 
         Ok((network, self.metadata.into(), self.extra))
     }

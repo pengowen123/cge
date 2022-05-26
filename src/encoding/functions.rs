@@ -7,21 +7,29 @@ use std::fs::{DirBuilder, File};
 use std::io::{BufReader, BufWriter, Write};
 use std::path::Path;
 
-use super::{CommonMetadata, Error, PortableCGE};
+use super::{CommonMetadata, Error, PortableCGE, WithRecurrentState};
 use crate::network::Network;
 
-/// Loads encoded data of any version from a string.
-pub(crate) fn load_str<'a, E>(s: &'a str) -> Result<(Network, CommonMetadata, E), Error>
+/// Loads encoded data of any version from a string. Also loads the network's recurrent state if
+/// `with_state` is `true`.
+pub(crate) fn load_str<'a, E>(
+    s: &'a str,
+    with_state: WithRecurrentState,
+) -> Result<(Network, CommonMetadata, E), Error>
 where
     E: Deserialize<'a>,
 {
     serde_json::from_str::<PortableCGE<E>>(s)?
-        .build()
+        .build(with_state)
         .map_err(Into::into)
 }
 
-/// Loads encoded data of any version from a file.
-pub(crate) fn load_file<E, P>(path: P) -> Result<(Network, CommonMetadata, E), Error>
+/// Loads encoded data of any version from a file. Also loads the network's recurrent state if
+/// `with_state` is `true`.
+pub(crate) fn load_file<E, P>(
+    path: P,
+    with_state: WithRecurrentState,
+) -> Result<(Network, CommonMetadata, E), Error>
 where
     E: DeserializeOwned,
     P: AsRef<Path>,
@@ -29,7 +37,7 @@ where
     let file = File::open(path)?;
     let reader = BufReader::new(file);
     serde_json::from_reader::<_, PortableCGE<E>>(reader)?
-        .build()
+        .build(with_state)
         .map_err(Into::into)
 }
 

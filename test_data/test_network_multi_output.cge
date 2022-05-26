@@ -81,6 +81,7 @@
         "value": 3.0
       }
     ],
+    "recurrent_state": null,
     "extra": null
   }
 }

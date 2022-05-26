@@ -1,6 +1,6 @@
 //! An example of saving and loading a network to/from a file.
 
-use cge::Network;
+use cge::{Network, WithRecurrentState};
 
 use serde::{Deserialize, Serialize};
 
@@ -14,7 +14,8 @@ struct Foo {
 fn main() {
     // Load the network from a file of any version
     let (mut network, mut metadata, extra) =
-        Network::load_file::<Foo, _>("test_data/with_extra_data_v1.cge").unwrap();
+        Network::load_file::<Foo, _>("test_data/with_extra_data_v1.cge", WithRecurrentState(true))
+            .unwrap();
 
     println!("metadata: {:?}", metadata);
     println!("extra: {:?}", extra);
@@ -29,6 +30,12 @@ fn main() {
     metadata.description = "a new description".to_string().into();
     let metadata = metadata.into_latest_version().unwrap();
     network
-        .to_file(metadata, extra, "test_output/with_extra_data.cge", true)
+        .to_file(
+            metadata,
+            extra,
+            WithRecurrentState(true),
+            "test_output/with_extra_data.cge",
+            true,
+        )
         .unwrap();
 }

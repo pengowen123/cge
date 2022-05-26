@@ -127,7 +127,7 @@ mod tests {
     use assert_approx_eq::assert_approx_eq;
 
     use super::*;
-    use crate::Network;
+    use crate::{Network, WithRecurrentState};
 
     fn get_file_path(file_name: &str) -> String {
         format!("{}/test_data/{}", env!("CARGO_MANIFEST_DIR"), file_name)
@@ -135,7 +135,11 @@ mod tests {
 
     #[test]
     fn test_evaluate_full() {
-        let (mut net, _, ()) = Network::load_file(get_file_path("test_network_v1.cge")).unwrap();
+        let (mut net, _, ()) = Network::load_file(
+            get_file_path("test_network_v1.cge"),
+            WithRecurrentState(false),
+        )
+        .unwrap();
 
         let output = net.evaluate(&[1.0, 1.0]).unwrap();
         assert_eq!(output.len(), 1);
@@ -148,7 +152,11 @@ mod tests {
 
     #[test]
     fn test_inputs() {
-        let (mut net, _, ()) = Network::load_file(get_file_path("test_network_v1.cge")).unwrap();
+        let (mut net, _, ()) = Network::load_file(
+            get_file_path("test_network_v1.cge"),
+            WithRecurrentState(false),
+        )
+        .unwrap();
 
         // Extra inputs should be discarded
         let output = net.evaluate(&[1.0, 1.0, 2.0, 3.0]).unwrap();
@@ -165,7 +173,11 @@ mod tests {
 
     #[test]
     fn test_activation() {
-        let (mut net, _, ()) = Network::load_file(get_file_path("test_network_v1.cge")).unwrap();
+        let (mut net, _, ()) = Network::load_file(
+            get_file_path("test_network_v1.cge"),
+            WithRecurrentState(false),
+        )
+        .unwrap();
 
         // Check that the activation function is being applied
         net.set_activation(Activation::Tanh);
@@ -181,8 +193,11 @@ mod tests {
 
     #[test]
     fn test_multiple_outputs() {
-        let (mut net, _, ()) =
-            Network::load_file(get_file_path("test_network_multi_output.cge")).unwrap();
+        let (mut net, _, ()) = Network::load_file(
+            get_file_path("test_network_multi_output.cge"),
+            WithRecurrentState(false),
+        )
+        .unwrap();
 
         let inputs = [2.0, 3.0];
         let output = net.evaluate(&inputs).unwrap().to_vec();
@@ -201,7 +216,11 @@ mod tests {
 
     #[test]
     fn test_forward_jumper_cached() {
-        let (mut net, _, ()) = Network::load_file(get_file_path("test_network_v1.cge")).unwrap();
+        let (mut net, _, ()) = Network::load_file(
+            get_file_path("test_network_v1.cge"),
+            WithRecurrentState(false),
+        )
+        .unwrap();
 
         for gene in &mut net.genome {
             if let Gene::Neuron(neuron) = gene {
@@ -221,8 +240,11 @@ mod tests {
 
     #[test]
     fn test_recurrent_previous_value() {
-        let (mut net, _, ()) =
-            Network::load_file(get_file_path("test_network_recurrent.cge")).unwrap();
+        let (mut net, _, ()) = Network::load_file(
+            get_file_path("test_network_recurrent.cge"),
+            WithRecurrentState(false),
+        )
+        .unwrap();
 
         // The recurrent jumper reads a previous value of zero despite the neuron already being
         // evaluated by the time the jumper is reached

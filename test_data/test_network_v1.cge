@@ -70,6 +70,9 @@
         "value": 3.0
       }
     ],
+    "recurrent_state": [
+      5.0
+    ],
     "extra": null
   }
 }
