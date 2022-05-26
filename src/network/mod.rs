@@ -737,6 +737,7 @@ impl Network {
         };
         // The new number of inputs to the network
         let mut new_num_inputs = self.num_inputs;
+        let mut added_recurrent_jumper = false;
 
         // Validate the mutation
         {
@@ -796,6 +797,8 @@ impl Network {
                         {
                             return Err(MutationError::InvalidJumperSource);
                         }
+
+                        added_recurrent_jumper = true;
                     }
                     NonNeuronGene::Bias(_) => {}
                 }
@@ -839,8 +842,10 @@ impl Network {
             new_sequence_index..new_sequence_index,
             iter::repeat(Some(parent_of_new_inputs)).take(genes_len),
         );
-        // Rebuild the recurrent state IDs map
-        self.update_recurrent_state_ids();
+        // Rebuild the recurrent state IDs map if necessary
+        if added_recurrent_jumper {
+            self.update_recurrent_state_ids();
+        }
         // Insert the new neuron at the front of the sequence if one is being added
         if let Some(weight) = subnetwork_weight {
             let num_inputs = genes_len;
@@ -911,7 +916,9 @@ impl Network {
             let removed = self.genome.remove(index);
 
             // Update other metadata
-            self.update_recurrent_state_ids();
+            if removed.is_recurrent_jumper() {
+                self.update_recurrent_state_ids();
+            }
 
             Ok(removed)
         } else {
