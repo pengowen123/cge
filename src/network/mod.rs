@@ -981,8 +981,8 @@ pub(crate) mod tests {
     use super::*;
     use crate::encoding::Metadata;
 
-    fn get_file_path(file_name: &str) -> String {
-        format!("{}/test_data/{}", env!("CARGO_MANIFEST_DIR"), file_name)
+    fn get_file_path(folder: &str, file_name: &str) -> String {
+        format!("{}/{}/{}", env!("CARGO_MANIFEST_DIR"), folder, file_name)
     }
 
     fn bias<G: From<Bias>>() -> G {
@@ -1091,7 +1091,7 @@ pub(crate) mod tests {
     #[test]
     fn test_save_load_recurrent_state() {
         let (mut net, _, ()) = Network::load_file(
-            get_file_path("test_network_recurrent.cge"),
+            get_file_path("test_data", "test_network_recurrent.cge"),
             WithRecurrentState(false),
         )
         .unwrap();
@@ -1110,7 +1110,7 @@ pub(crate) mod tests {
     #[test]
     fn test_rebuild_metadata() {
         let (net, _, ()) = Network::load_file(
-            get_file_path("test_network_multi_output.cge"),
+            get_file_path("test_data", "test_network_multi_output.cge"),
             WithRecurrentState(false),
         )
         .unwrap();
@@ -1149,7 +1149,7 @@ pub(crate) mod tests {
     #[test]
     fn test_clear_state() {
         let (mut net, _, ()) = Network::load_file(
-            get_file_path("test_network_recurrent.cge"),
+            get_file_path("test_data", "test_network_recurrent.cge"),
             WithRecurrentState(false),
         )
         .unwrap();
@@ -1816,6 +1816,11 @@ pub(crate) mod tests {
         }
     }
 
+    /// Returns a random gene weight.
+    fn get_random_weight() -> f64 {
+        (1e3 * rand::thread_rng().gen_range(-1.0f64..=1.0)).round() / 1e3
+    }
+
     /// Returns a random `NonNeuronGene`
     fn get_random_non_neuron(net: &mut Network) -> NonNeuronGene {
         let mut rng = rand::thread_rng();
@@ -1826,7 +1831,7 @@ pub(crate) mod tests {
         // being added)
         ids.push(net.next_neuron_id());
 
-        match rng.gen_range(0..=3) {
+        let mut gene: NonNeuronGene = match rng.gen_range(0i32..=3) {
             0 => bias(),
             1 => input(rng.gen_range(0..10)),
             2 => {
@@ -1838,7 +1843,16 @@ pub(crate) mod tests {
                 recurrent(source.as_usize())
             }
             _ => unreachable!(),
+        };
+
+        let weight = get_random_weight();
+        match &mut gene {
+            NonNeuronGene::Bias(g) => *g.mut_value() = weight,
+            NonNeuronGene::Input(g) => *g.mut_weight() = weight,
+            NonNeuronGene::ForwardJumper(g) => *g.mut_weight() = weight,
+            NonNeuronGene::RecurrentJumper(g) => *g.mut_weight() = weight,
         }
+        gene
     }
 
     /// Tries to add a random non-neuron gene to the network
@@ -1864,7 +1878,7 @@ pub(crate) mod tests {
             .map(|_| get_random_non_neuron(net))
             .collect();
 
-        let _result = net.add_subnetwork(parent, 1.0, inputs);
+        let _result = net.add_subnetwork(parent, get_random_weight(), inputs);
     }
 
     /// Tries to remove a random gene from the network
@@ -1916,6 +1930,20 @@ pub(crate) mod tests {
         network.stack.clear();
         network.clear_state();
         assert_eq!(converted_network, network);
+
+        // Save the network for later inspection
+        network.evaluate(&[1.0; 10]);
+        let path =
+            get_file_path("test_output", &format!("random_{}_output_network.cge", network.num_outputs()));
+        network
+            .to_file(
+                Metadata::new("A randomly-generated network.".to_string()),
+                (),
+                WithRecurrentState(true),
+                path,
+                true,
+            )
+            .unwrap();
     }
 
     #[test]
