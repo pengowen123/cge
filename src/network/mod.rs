@@ -8,6 +8,7 @@ pub use error::{
     Error, IndexOutOfBoundsError, MismatchedLengthsError, MutationError, NotEnoughInputsError,
 };
 
+use num_traits::Float;
 #[cfg(all(feature = "serde", feature = "serde_json"))]
 use serde::de::DeserializeOwned;
 #[cfg(all(feature = "serde", feature = "serde_json"))]
@@ -20,10 +21,10 @@ use std::ops::{Index, Range};
 use std::path::Path;
 
 use crate::activation::Activation;
-#[cfg(feature = "serde")]
-use crate::encoding::{EncodingVersion, MetadataVersion, PortableCGE, WithRecurrentState};
 #[cfg(all(feature = "serde", feature = "serde_json"))]
 use crate::encoding::{self, CommonMetadata};
+#[cfg(feature = "serde")]
+use crate::encoding::{EncodingVersion, MetadataVersion, PortableCGE, WithRecurrentState};
 use crate::gene::*;
 use crate::stack::Stack;
 use evaluate::Inputs;
@@ -62,9 +63,9 @@ impl NeuronInfo {
 //       updates to the metadata
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
-pub struct Network {
+pub struct Network<T: Float> {
     // The genes of the network
-    genome: Vec<Gene>,
+    genome: Vec<Gene<T>>,
     // The activation function to use for neuron outputs
     activation: Activation,
     // The ID to use for the next neuron added to the network
@@ -80,11 +81,11 @@ pub struct Network {
     // The number of network outputs
     num_outputs: usize,
     // The stack used when evaluating the `Network`
-    stack: Stack,
+    stack: Stack<T>,
 }
 
-impl Network {
-    pub fn new(genome: Vec<Gene>, activation: Activation) -> Result<Self, Error> {
+impl<T: Float> Network<T> {
+    pub fn new(genome: Vec<Gene<T>>, activation: Activation) -> Result<Self, Error> {
         let mut network = Self {
             genome,
             activation,
@@ -110,8 +111,9 @@ impl Network {
     pub fn load_str<'a, E>(
         s: &'a str,
         with_state: WithRecurrentState,
-    ) -> Result<(Network, CommonMetadata, E), encoding::Error>
+    ) -> Result<(Self, CommonMetadata, E), encoding::Error>
     where
+        T: Deserialize<'a>,
         E: Deserialize<'a>,
     {
         encoding::load_str(s, with_state)
@@ -125,8 +127,9 @@ impl Network {
     pub fn load_file<E, P>(
         path: P,
         with_state: WithRecurrentState,
-    ) -> Result<(Network, CommonMetadata, E), encoding::Error>
+    ) -> Result<(Self, CommonMetadata, E), encoding::Error>
     where
+        T: DeserializeOwned,
         E: DeserializeOwned,
         P: AsRef<Path>,
     {
@@ -147,8 +150,9 @@ impl Network {
         with_state: WithRecurrentState,
     ) -> Result<String, encoding::Error>
     where
+        T: Serialize,
         E: Serialize,
-        M: MetadataVersion<E>,
+        M: MetadataVersion<T, E>,
     {
         encoding::to_string(self.to_serializable(metadata, extra, with_state))
     }
@@ -171,8 +175,9 @@ impl Network {
         create_dirs: bool,
     ) -> Result<(), encoding::Error>
     where
+        T: Serialize,
         E: Serialize,
-        M: MetadataVersion<E>,
+        M: MetadataVersion<T, E>,
         P: AsRef<Path>,
     {
         encoding::to_file(
@@ -191,7 +196,7 @@ impl Network {
     /// ```
     /// # use cge::Network;
     /// # let (network, _, ()) =
-    /// #     Network::load_file(format!(
+    /// #     Network::<f64>::load_file(format!(
     /// #         "{}/test_data/test_network_v1.cge",
     /// #         env!("CARGO_MANIFEST_DIR")
     /// #     ), WithRecurrentState(true)).unwrap();
@@ -205,7 +210,7 @@ impl Network {
     /// let string = serde_json::to_string(&serializable).unwrap();
     ///
     /// // Other formats can be used when deserializing as well
-    /// let deserialized: PortableCGE<()> = serde_json::from_str(&string).unwrap();
+    /// let deserialized: PortableCGE<f64, ()> = serde_json::from_str(&string).unwrap();
     /// let (network, metadata, extra) = deserialized.build(WithRecurrentState(true)).unwrap();
     /// ```
     #[cfg(feature = "serde")]
@@ -214,9 +219,9 @@ impl Network {
         metadata: M,
         extra: E,
         with_state: WithRecurrentState,
-    ) -> PortableCGE<E>
+    ) -> PortableCGE<T, E>
     where
-        M: MetadataVersion<E>,
+        M: MetadataVersion<T, E>,
     {
         M::Data::new(self, metadata, extra, with_state)
     }
@@ -420,7 +425,7 @@ impl Network {
     ///
     /// If too many inputs are given, the extras are discarded. Returns `Err` if too few inputs were
     /// provided (see [`num_inputs`][Self::num_inputs]).
-    pub fn evaluate(&mut self, inputs: &[f64]) -> Result<&[f64], NotEnoughInputsError> {
+    pub fn evaluate(&mut self, inputs: &[T]) -> Result<&[T], NotEnoughInputsError> {
         if inputs.len() < self.num_inputs {
             return Err(NotEnoughInputsError::new(self.num_inputs(), inputs.len()));
         }
@@ -446,14 +451,14 @@ impl Network {
         Ok(self.stack.as_slice())
     }
 
-    /// Clears the persistent state of the neural network.
+    /// Clears the recurrent state of the neural network.
     ///
     /// This state is only used by [`RecurrentJumper`] connections, so calling this method is
     /// unnecessary if the network does not contain them.
     pub fn clear_state(&mut self) {
         for gene in &mut self.genome {
             if let Gene::Neuron(neuron) = gene {
-                *neuron.mut_previous_value() = 0.0;
+                *neuron.mut_previous_value() = T::zero();
             }
         }
     }
@@ -483,7 +488,7 @@ impl Network {
 
     /// Returns an iterator over the recurrent state of the [`Network`], which are the values
     /// stored for use by [`RecurrentJumper`] genes.
-    pub fn recurrent_state(&self) -> impl Iterator<Item = f64> + '_ {
+    pub fn recurrent_state(&self) -> impl Iterator<Item = T> + '_ {
         self.recurrent_state_ids
             .iter()
             .map(|id| self.get_neuron(*id).unwrap().previous_value())
@@ -492,7 +497,7 @@ impl Network {
     /// Maps `f` over the recurrent state of the [`Network`], which are the values stored for use by
     /// [`RecurrentJumper`] genes. The first argument to `f` is the index of the state value being
     /// accessed.
-    pub fn map_recurrent_state<F: FnMut(usize, &mut f64)>(&mut self, mut f: F) {
+    pub fn map_recurrent_state<F: FnMut(usize, &mut T)>(&mut self, mut f: F) {
         for (i, id) in self.recurrent_state_ids.iter().enumerate() {
             let source = utils::get_mut_neuron(*id, &self.neuron_info, &mut self.genome).unwrap();
             f(i, source.mut_previous_value());
@@ -502,7 +507,7 @@ impl Network {
     /// Sets the recurrent state of the [`Network`], which are the values stored for use by
     /// [`RecurrentJumper`] genes. Returns `Err` if the length of `state` does not equal the number
     /// of recurrent state values stored by the [`Network`].
-    pub fn set_recurrent_state(&mut self, state: &[f64]) -> Result<(), MismatchedLengthsError> {
+    pub fn set_recurrent_state(&mut self, state: &[T]) -> Result<(), MismatchedLengthsError> {
         if state.len() != self.recurrent_state_ids.len() {
             Err(MismatchedLengthsError)
         } else {
@@ -517,7 +522,7 @@ impl Network {
     pub fn set_recurrent_state_at(
         &mut self,
         index: usize,
-        value: f64,
+        value: T,
     ) -> Result<(), IndexOutOfBoundsError> {
         self.recurrent_state_ids
             .get(index)
@@ -530,7 +535,7 @@ impl Network {
     }
 
     /// Returns the genome of this `Network`.
-    pub fn genome(&self) -> &[Gene] {
+    pub fn genome(&self) -> &[Gene<T>] {
         &self.genome
     }
 
@@ -574,12 +579,12 @@ impl Network {
     }
 
     /// Returns a reference to the [`Neuron`] with the given ID if it exists.
-    pub fn get_neuron(&self, id: NeuronId) -> Option<&Neuron> {
+    pub fn get_neuron(&self, id: NeuronId) -> Option<&Neuron<T>> {
         utils::get_neuron(id, &self.neuron_info, &self.genome)
     }
 
     /// Returns a mutable reference to the [`Neuron`] with the given ID if it exists.
-    pub(crate) fn get_mut_neuron(&mut self, id: NeuronId) -> Option<&mut Neuron> {
+    pub(crate) fn get_mut_neuron(&mut self, id: NeuronId) -> Option<&mut Neuron<T>> {
         utils::get_mut_neuron(id, &self.neuron_info, &mut self.genome)
     }
 
@@ -618,18 +623,18 @@ impl Network {
     }
 
     /// Returns an iterator over the gene weights.
-    pub fn weights(&self) -> impl Iterator<Item = f64> + '_ {
+    pub fn weights(&self) -> impl Iterator<Item = T> + '_ {
         self.genome.iter().map(Gene::weight)
     }
 
     /// Returns a mutable iterator over the gene weights.
-    pub fn mut_weights(&mut self) -> impl Iterator<Item = &mut f64> {
+    pub fn mut_weights(&mut self) -> impl Iterator<Item = &mut T> {
         self.genome.iter_mut().map(Gene::mut_weight)
     }
 
     /// Sets the gene weights to the provided values. Returns `Err` if
     /// `weights.len() != self.len()`.
-    pub fn set_weights(&mut self, weights: &[f64]) -> Result<(), MismatchedLengthsError> {
+    pub fn set_weights(&mut self, weights: &[T]) -> Result<(), MismatchedLengthsError> {
         if weights.len() != self.len() {
             Err(MismatchedLengthsError)
         } else {
@@ -642,7 +647,7 @@ impl Network {
     }
 
     /// Adds a non-neuron gene as an input to a `parent` [`Neuron`].
-    pub fn add_non_neuron<G: Into<NonNeuronGene>>(
+    pub fn add_non_neuron<G: Into<NonNeuronGene<T>>>(
         &mut self,
         parent: NeuronId,
         gene: G,
@@ -654,7 +659,7 @@ impl Network {
     pub fn add_non_neurons(
         &mut self,
         parent: NeuronId,
-        genes: Vec<NonNeuronGene>,
+        genes: Vec<NonNeuronGene<T>>,
     ) -> Result<(), MutationError> {
         self.add_genes(parent, None, genes).map(|_| ())
     }
@@ -668,8 +673,8 @@ impl Network {
     pub fn add_subnetwork(
         &mut self,
         parent: NeuronId,
-        weight: f64,
-        inputs: Vec<NonNeuronGene>,
+        weight: T,
+        inputs: Vec<NonNeuronGene<T>>,
     ) -> Result<NeuronId, MutationError> {
         self.add_genes(parent, Some(weight), inputs)
             .map(Option::unwrap)
@@ -683,8 +688,8 @@ impl Network {
     fn add_genes(
         &mut self,
         parent: NeuronId,
-        subnetwork_weight: Option<f64>,
-        genes: Vec<NonNeuronGene>,
+        subnetwork_weight: Option<T>,
+        genes: Vec<NonNeuronGene<T>>,
     ) -> Result<Option<NeuronId>, MutationError> {
         // O(n)
         if genes.is_empty() {
@@ -865,7 +870,7 @@ impl Network {
 
     /// Removes and returns the non-neuron gene at the index if it is not the only input to its
     /// parent neuron.
-    pub fn remove_non_neuron(&mut self, index: usize) -> Result<Gene, MutationError> {
+    pub fn remove_non_neuron(&mut self, index: usize) -> Result<Gene<T>, MutationError> {
         // O(n)
         if let Some(removed_gene) = self.genome.get(index) {
             if removed_gene.is_neuron() {
@@ -966,14 +971,14 @@ impl Network {
     }
 }
 
-impl Index<usize> for Network {
-    type Output = Gene;
+impl<T: Float> Index<usize> for Network<T> {
+    type Output = Gene<T>;
     fn index(&self, idx: usize) -> &Self::Output {
         &self.genome[idx]
     }
 }
 
-impl Index<NeuronId> for Network {
+impl<T: Float> Index<NeuronId> for Network<T> {
     type Output = NeuronInfo;
     fn index(&self, idx: NeuronId) -> &Self::Output {
         &self.neuron_info[&idx]
@@ -981,7 +986,7 @@ impl Index<NeuronId> for Network {
 }
 
 /// Moves the current value stored in each neuron into its previous value.
-fn update_stored_values(genome: &mut [Gene]) {
+fn update_stored_values<T: Float>(genome: &mut [Gene<T>]) {
     for gene in genome {
         if let Gene::Neuron(neuron) = gene {
             *neuron.mut_previous_value() = neuron
@@ -1003,27 +1008,27 @@ pub(crate) mod tests {
         format!("{}/{}/{}", env!("CARGO_MANIFEST_DIR"), folder, file_name)
     }
 
-    fn bias<G: From<Bias>>() -> G {
+    fn bias<G: From<Bias<f64>>>() -> G {
         Bias::new(1.0).into()
     }
 
-    fn input<G: From<Input>>(id: usize) -> G {
+    fn input<G: From<Input<f64>>>(id: usize) -> G {
         Input::new(InputId::new(id), 1.0).into()
     }
 
-    fn neuron<G: From<Neuron>>(id: usize, num_inputs: usize) -> G {
+    fn neuron<G: From<Neuron<f64>>>(id: usize, num_inputs: usize) -> G {
         Neuron::new(NeuronId::new(id), num_inputs, 1.0).into()
     }
 
-    fn forward<G: From<ForwardJumper>>(source_id: usize) -> G {
+    fn forward<G: From<ForwardJumper<f64>>>(source_id: usize) -> G {
         ForwardJumper::new(NeuronId::new(source_id), 1.0).into()
     }
 
-    fn recurrent<G: From<RecurrentJumper>>(source_id: usize) -> G {
+    fn recurrent<G: From<RecurrentJumper<f64>>>(source_id: usize) -> G {
         RecurrentJumper::new(NeuronId::new(source_id), 1.0).into()
     }
 
-    fn check_num_outputs(network: &Network) {
+    fn check_num_outputs(network: &Network<f64>) {
         assert_eq!(
             network.num_outputs(),
             network
@@ -1108,7 +1113,7 @@ pub(crate) mod tests {
 
     #[test]
     fn test_save_load_recurrent_state() {
-        let (mut net, _, ()) = Network::load_file(
+        let (mut net, _, ()) = Network::<f64>::load_file(
             get_file_path("test_data", "test_network_recurrent.cge"),
             WithRecurrentState(false),
         )
@@ -1127,7 +1132,7 @@ pub(crate) mod tests {
 
     #[test]
     fn test_rebuild_metadata() {
-        let (net, _, ()) = Network::load_file(
+        let (net, _, ()) = Network::<f64>::load_file(
             get_file_path("test_data", "test_network_multi_output.cge"),
             WithRecurrentState(false),
         )
@@ -1166,7 +1171,7 @@ pub(crate) mod tests {
 
     #[test]
     fn test_clear_state() {
-        let (mut net, _, ()) = Network::load_file(
+        let (mut net, _, ()) = Network::<f64>::load_file(
             get_file_path("test_data", "test_network_recurrent.cge"),
             WithRecurrentState(false),
         )
@@ -1217,7 +1222,7 @@ pub(crate) mod tests {
     fn test_validate_empty() {
         let genome = vec![];
         assert_eq!(
-            Network::new(genome, Activation::Linear).unwrap_err(),
+            Network::<f64>::new(genome, Activation::Linear).unwrap_err(),
             Error::EmptyGenome
         );
     }
@@ -1363,8 +1368,8 @@ pub(crate) mod tests {
 
     /// Creates a `Network` from the genome, runs the mutation on it, and checks that the internal
     /// state was not updated
-    fn run_invalid_mutation_test<F: Fn(&mut Network) -> Result<(), MutationError>>(
-        genome: Vec<Gene>,
+    fn run_invalid_mutation_test<F: Fn(&mut Network<f64>) -> Result<(), MutationError>>(
+        genome: Vec<Gene<f64>>,
         mutate: F,
         expected: MutationError,
     ) {
@@ -1380,7 +1385,7 @@ pub(crate) mod tests {
         run_invalid_mutation_test(
             vec![neuron(0, 1), input(0)],
             |net| {
-                let new_gene: NonNeuronGene = input(1);
+                let new_gene: NonNeuronGene<_> = input(1);
                 net.add_non_neuron(NeuronId::new(1), new_gene)
             },
             MutationError::InvalidParent,
@@ -1389,7 +1394,7 @@ pub(crate) mod tests {
 
     #[test]
     fn test_mutate_invalid_jumper_source() {
-        let new_genes: [NonNeuronGene; 2] = [forward::<NonNeuronGene>(1), recurrent(1)];
+        let new_genes: [NonNeuronGene<_>; 2] = [forward(1), recurrent(1)];
         for new_gene in new_genes {
             run_invalid_mutation_test(
                 vec![neuron(0, 1), input(0)],
@@ -1404,7 +1409,7 @@ pub(crate) mod tests {
         run_invalid_mutation_test(
             vec![neuron(0, 1), input(0)],
             |net| {
-                let new_gene: NonNeuronGene = forward(0);
+                let new_gene: NonNeuronGene<_> = forward(0);
                 net.add_non_neuron(NeuronId::new(0), new_gene)
             },
             MutationError::InvalidForwardJumper,
@@ -1413,7 +1418,7 @@ pub(crate) mod tests {
         run_invalid_mutation_test(
             vec![neuron(0, 2), neuron(1, 1), input(1), input(0)],
             |net| {
-                let new_gene: NonNeuronGene = forward(0);
+                let new_gene: NonNeuronGene<_> = forward(0);
                 net.add_non_neuron(NeuronId::new(1), new_gene)
             },
             MutationError::InvalidForwardJumper,
@@ -1508,7 +1513,7 @@ pub(crate) mod tests {
         run_invalid_mutation_test(
             vec![neuron(0, 1), input(0)],
             |net| {
-                let new_gene: NonNeuronGene = input(usize::MAX);
+                let new_gene: NonNeuronGene<_> = input(usize::MAX);
                 net.add_non_neuron(NeuronId::new(0), new_gene).map(|_| ())
             },
             MutationError::Arithmetic,
@@ -1516,7 +1521,7 @@ pub(crate) mod tests {
     }
 
     /// Checks that the networks metadata does not change if a full rebuild is performed
-    fn check_mutated_metadata(net: &mut Network) {
+    fn check_mutated_metadata(net: &mut Network<f64>) {
         let mutated_neuron_info = net.neuron_info.clone();
         let mutated_gene_parents = net.gene_parents.clone();
         let mutated_recurrent_state_ids = net.recurrent_state_ids.clone();
@@ -1536,10 +1541,10 @@ pub(crate) mod tests {
 
     /// Creates a network from the genome, runs the mutation on it, and check that its genome and
     /// metadata are correct
-    fn run_mutation_test<O, F: Fn(&mut Network) -> O>(
-        start_genome: Vec<Gene>,
+    fn run_mutation_test<O, F: Fn(&mut Network<f64>) -> O>(
+        start_genome: Vec<Gene<f64>>,
         mutate: F,
-        end_genome: Vec<Gene>,
+        end_genome: Vec<Gene<f64>>,
         expected_num_inputs: usize,
         expected_next_neuron_id: NeuronId,
     ) {
@@ -1565,7 +1570,7 @@ pub(crate) mod tests {
         run_mutation_test(
             vec![neuron(0, 1), neuron(1, 1), input(0)],
             |net| {
-                let new_gene: NonNeuronGene = input(1);
+                let new_gene: NonNeuronGene<_> = input(1);
                 net.add_non_neuron(NeuronId::new(0), new_gene).unwrap();
             },
             vec![neuron(0, 2), input(1), neuron(1, 1), input(0)],
@@ -1668,7 +1673,7 @@ pub(crate) mod tests {
     fn test_remove_non_neuron() {
         run_mutation_test(
             vec![neuron(0, 2), input(3), input(0)],
-            |net| assert_eq!(input::<Gene>(3), net.remove_non_neuron(1).unwrap()),
+            |net| assert_eq!(input::<Gene<_>>(3), net.remove_non_neuron(1).unwrap()),
             vec![neuron(0, 1), input(0)],
             1,
             NeuronId::new(1),
@@ -1676,7 +1681,7 @@ pub(crate) mod tests {
 
         run_mutation_test(
             vec![neuron(0, 1), neuron(1, 2), input(1), input(0)],
-            |net| assert_eq!(input::<Gene>(0), net.remove_non_neuron(3).unwrap()),
+            |net| assert_eq!(input::<Gene<_>>(0), net.remove_non_neuron(3).unwrap()),
             vec![neuron(0, 1), neuron(1, 1), input(1)],
             2,
             NeuronId::new(2),
@@ -1684,7 +1689,7 @@ pub(crate) mod tests {
 
         run_mutation_test(
             vec![neuron(0, 2), neuron(1, 1), input(3), recurrent(0)],
-            |net| assert_eq!(recurrent::<Gene>(0), net.remove_non_neuron(3).unwrap()),
+            |net| assert_eq!(recurrent::<Gene<_>>(0), net.remove_non_neuron(3).unwrap()),
             vec![neuron(0, 1), neuron(1, 1), input(3)],
             4,
             NeuronId::new(2),
@@ -1692,7 +1697,7 @@ pub(crate) mod tests {
 
         run_mutation_test(
             vec![neuron(0, 3), input(0), neuron(1, 1), bias(), bias()],
-            |net| assert_eq!(input::<Gene>(0), net.remove_non_neuron(1).unwrap()),
+            |net| assert_eq!(input::<Gene<_>>(0), net.remove_non_neuron(1).unwrap()),
             vec![neuron(0, 2), neuron(1, 1), bias(), bias()],
             0,
             NeuronId::new(2),
@@ -1705,7 +1710,7 @@ pub(crate) mod tests {
         run_mutation_test(
             vec![neuron(0, 1), bias()],
             |net| {
-                let id = |g: NonNeuronGene| g;
+                let id = |g: NonNeuronGene<_>| g;
                 net.add_non_neuron(NeuronId::new(0), id(input(0))).unwrap();
                 net.add_non_neuron(NeuronId::new(0), id(input(1))).unwrap();
 
@@ -1821,14 +1826,14 @@ pub(crate) mod tests {
 
         // Check that each source is actually valid
         for id in &valid_sources {
-            let forward: NonNeuronGene = forward(id.as_usize());
+            let forward: NonNeuronGene<_> = forward(id.as_usize());
             assert!(net.add_non_neuron(parent_id, forward).is_ok());
         }
 
         // Check that each source not listed is actually invalid
         for id in 0..net.neuron_info.len() {
             if !valid_sources.contains(&NeuronId::new(id)) {
-                let forward: NonNeuronGene = forward(id);
+                let forward: NonNeuronGene<_> = forward(id);
                 assert!(net.add_non_neuron(parent_id, forward).is_err());
             }
         }
@@ -1840,7 +1845,7 @@ pub(crate) mod tests {
     }
 
     /// Returns a random `NonNeuronGene`
-    fn get_random_non_neuron(net: &mut Network) -> NonNeuronGene {
+    fn get_random_non_neuron(net: &mut Network<f64>) -> NonNeuronGene<f64> {
         let mut rng = rand::thread_rng();
 
         let mut ids = net.neuron_ids().collect::<Vec<_>>();
@@ -1849,7 +1854,7 @@ pub(crate) mod tests {
         // being added)
         ids.push(net.next_neuron_id());
 
-        let mut gene: NonNeuronGene = match rng.gen_range(0i32..=3) {
+        let mut gene: NonNeuronGene<_> = match rng.gen_range(0i32..=3) {
             0 => bias(),
             1 => input(rng.gen_range(0..10)),
             2 => {
@@ -1874,13 +1879,13 @@ pub(crate) mod tests {
     }
 
     /// Tries to add a random non-neuron gene to the network
-    fn add_random_non_neuron(net: &mut Network, parent: NeuronId) {
+    fn add_random_non_neuron(net: &mut Network<f64>, parent: NeuronId) {
         let new_gene = get_random_non_neuron(net);
         let _result = net.add_non_neuron(parent, new_gene);
     }
 
     /// Tries to add a random sequence of non-neuron genes to the network
-    fn add_random_non_neurons(net: &mut Network, parent: NeuronId) {
+    fn add_random_non_neurons(net: &mut Network<f64>, parent: NeuronId) {
         let mut rng = rand::thread_rng();
         let count = rng.gen_range(0..=2);
         let new_genes = (0..count).map(|_| get_random_non_neuron(net)).collect();
@@ -1889,7 +1894,7 @@ pub(crate) mod tests {
     }
 
     /// Tries to add a random subnetwork to the network
-    fn add_random_subnetwork(net: &mut Network, parent: NeuronId) {
+    fn add_random_subnetwork(net: &mut Network<f64>, parent: NeuronId) {
         let mut rng = rand::thread_rng();
         let num_inputs = rng.gen_range(0..=3);
         let inputs = (0..num_inputs)
@@ -1900,7 +1905,7 @@ pub(crate) mod tests {
     }
 
     /// Tries to remove a random gene from the network
-    fn remove_random_gene(net: &mut Network) {
+    fn remove_random_gene(net: &mut Network<f64>) {
         let mut rng = rand::thread_rng();
         let index = (0..=net.genome().len()).choose(&mut rng).unwrap();
 
@@ -1910,7 +1915,7 @@ pub(crate) mod tests {
     /// Builds and tests a random network from the initial genome using mutation operators
     /// Attempts invalid mutations in addition to valid ones, with a somewhat even split between
     /// them
-    fn build_random_network(initial: Vec<Gene>) {
+    fn build_random_network(initial: Vec<Gene<f64>>) {
         const MUTATION_COUNT: usize = 200;
 
         let mut network = Network::new(initial, Activation::Linear).unwrap();
@@ -1943,7 +1948,7 @@ pub(crate) mod tests {
             .to_string(Metadata::new(None), (), WithRecurrentState(true))
             .unwrap();
         let (converted_network, _, ()) =
-            Network::load_str(&string, WithRecurrentState(true)).unwrap();
+            Network::<f64>::load_str(&string, WithRecurrentState(true)).unwrap();
 
         network.stack.clear();
         network.clear_state();

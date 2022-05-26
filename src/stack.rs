@@ -1,40 +1,49 @@
 //! A stack for use in network evaluation.
 
+use num_traits::Float;
+
 use std::ops;
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Stack(Vec<f64>);
+pub struct Stack<T>(Vec<T>);
 
-impl ops::Deref for Stack {
-    type Target = Vec<f64>;
+impl<T> ops::Deref for Stack<T> {
+    type Target = Vec<T>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl Stack {
-    pub fn new() -> Stack {
+impl<T> Stack<T> {
+    pub fn new() -> Self {
         Stack { 0: Vec::new() }
     }
 
     /// Pops `count` items off the stack and returns their sum. Returns `None` if there are fewer
     /// than `count` items on the stack.
-    pub fn pop_sum(&mut self, count: usize) -> Option<f64> {
+    pub fn pop_sum(&mut self, count: usize) -> Option<T>
+    where
+        T: Float,
+    {
         let len = self.0.len();
 
         if count > len {
             return None;
         }
 
-        Some(self.0.drain(len - count..len).sum())
+        Some(
+            self.0
+                .drain(len - count..len)
+                .fold(T::zero(), |acc, x| acc + x),
+        )
     }
 
-    pub fn pop(&mut self) -> Option<f64> {
+    pub fn pop(&mut self) -> Option<T> {
         self.0.pop()
     }
 
-    pub fn push(&mut self, value: f64) {
+    pub fn push(&mut self, value: T) {
         self.0.push(value);
     }
 

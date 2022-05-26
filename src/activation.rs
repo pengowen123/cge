@@ -1,5 +1,6 @@
 //! Handling of neuron activation functions.
 
+use num_traits::Float;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -28,7 +29,7 @@ pub enum Activation {
 
 impl Activation {
     /// Applies the activation function to the input.
-    pub fn apply(&self, x: f64) -> f64 {
+    pub fn apply<T: Float>(&self, x: T) -> T {
         match self {
             Activation::Linear => linear(x),
             Activation::UnitStep => unit_step(x),
@@ -42,7 +43,7 @@ impl Activation {
     }
 
     /// Returns the corresponding function to the `Activation`.
-    pub fn get_function(&self) -> fn(f64) -> f64 {
+    pub fn get_function<T: Float>(&self) -> fn(T) -> T {
         match self {
             Activation::Linear => linear,
             Activation::UnitStep => unit_step,
@@ -57,53 +58,53 @@ impl Activation {
 }
 
 /// Outputs `x`.
-pub fn linear(x: f64) -> f64 {
+pub fn linear<T>(x: T) -> T {
     x
 }
 
 /// Heaviside/unit step function. Outputs `1` for `x > 0`, or `0` otherwise.
-pub fn unit_step(x: f64) -> f64 {
-    if x > 0.0 {
-        1.0
+pub fn unit_step<T: Float>(x: T) -> T {
+    if x > T::zero() {
+        T::one()
     } else {
-        0.0
+        T::zero()
     }
 }
 
 /// Outputs `1` for `x > 0`, `0` for `x = 0`, or `-1` otherwise.
-pub fn sign(x: f64) -> f64 {
-    if x > 0.0 {
-        1.0
-    } else if x == 0.0 {
-        0.0
+pub fn sign<T: Float>(x: T) -> T {
+    if x > T::zero() {
+        T::one()
+    } else if x == T::zero() {
+        T::zero()
     } else {
-        -1.0
+        -T::one()
     }
 }
 
 /// Logistic function. Outputs `1 / (1 + exp(-x))`.
-pub fn sigmoid(x: f64) -> f64 {
-    1.0 / (1.0 + (-x).exp())
+pub fn sigmoid<T: Float>(x: T) -> T {
+    T::one() / (T::one() + (-x).exp())
 }
 
 /// Outputs `tanh(x)`.
-pub fn tanh(x: f64) -> f64 {
+pub fn tanh<T: Float>(x: T) -> T {
     x.tanh()
 }
 
 /// Outputs `x / (1 + abs(x))`.
-pub fn soft_sign(x: f64) -> f64 {
-    x / (1.0 + x.abs())
+pub fn soft_sign<T: Float>(x: T) -> T {
+    x / (T::one() + x.abs())
 }
 
 /// Outputs `(sqrt(x^2 + 1) - 1) / 2 + x`.
-pub fn bent_identity(x: f64) -> f64 {
-    (((x.powi(2) + 1.0).sqrt() - 1.0) / 2.0) + x
+pub fn bent_identity<T: Float>(x: T) -> T {
+    (((x.powi(2) + T::one()).sqrt() - T::one()) / (T::one() + T::one())) + x
 }
 
 /// Rectified linear unit. Outputs `max(0, x)`.
-pub fn relu(x: f64) -> f64 {
-    x.max(0.0)
+pub fn relu<T: Float>(x: T) -> T {
+    x.max(T::zero())
 }
 
 #[cfg(test)]

@@ -1,5 +1,6 @@
 //! Different types of genes that can be used in a network genome.
 
+use num_traits::Float;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -8,23 +9,23 @@ use serde::{Deserialize, Serialize};
 /// Adds a constant value to the network.
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Bias {
-    value: f64,
+pub struct Bias<T> {
+    value: T,
 }
 
-impl Bias {
+impl<T: Float> Bias<T> {
     /// Returns a new `Bias` that adds a constant `value` to the network.
-    pub fn new(value: f64) -> Self {
+    pub fn new(value: T) -> Self {
         Self { value }
     }
 
     /// Returns the value of the `Bias`.
-    pub fn value(&self) -> f64 {
+    pub fn value(&self) -> T {
         self.value
     }
 
     /// Returns a mutable reference to the value of the `Bias`.
-    pub fn mut_value(&mut self) -> &mut f64 {
+    pub fn mut_value(&mut self) -> &mut T {
         &mut self.value
     }
 }
@@ -49,16 +50,16 @@ impl InputId {
 /// Adds a connection to one of the network inputs.
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Input {
+pub struct Input<T> {
     // The ID of the network input referred to
     id: InputId,
-    weight: f64,
+    weight: T,
 }
 
-impl Input {
+impl<T: Float> Input<T> {
     /// Returns a new `Input` that connects to the network input with the id and weights it by
     /// `weight`.
-    pub fn new(id: InputId, weight: f64) -> Self {
+    pub fn new(id: InputId, weight: T) -> Self {
         Self { id, weight }
     }
 
@@ -68,12 +69,12 @@ impl Input {
     }
 
     /// Returns the weight of this `Input`.
-    pub fn weight(&self) -> f64 {
+    pub fn weight(&self) -> T {
         self.weight
     }
 
     /// Returns a mutable reference to the weight of this `Input`.
-    pub fn mut_weight(&mut self) -> &mut f64 {
+    pub fn mut_weight(&mut self) -> &mut T {
         &mut self.weight
     }
 }
@@ -98,7 +99,7 @@ impl NeuronId {
 /// Takes some number of incoming connections and applies the activation function to their sum.
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Neuron {
+pub struct Neuron<T: Float> {
     // The ID of this neuron
     id: NeuronId,
     // The number of incoming connections to this neuron
@@ -106,25 +107,27 @@ pub struct Neuron {
     // The weight to apply to the result of the activation function
     // Note that this weight is not used when the neuron is referred to by a jumper connection; the
     // jumper's weight is used instead
-    weight: f64,
+    weight: T,
     // The unweighted value outputted by this neuron during the current network evaluation if it has
     // been calculated already
     #[cfg_attr(feature = "serde", serde(skip))]
-    current_value: Option<f64>,
+    #[cfg_attr(feature = "serde", serde(default = "Default::default"))]
+    current_value: Option<T>,
     // The unweighted value outputted by this neuron during the previous network evaluation
     #[cfg_attr(feature = "serde", serde(skip))]
-    previous_value: f64,
+    #[cfg_attr(feature = "serde", serde(default = "T::zero"))]
+    previous_value: T,
 }
 
-impl Neuron {
+impl<T: Float> Neuron<T> {
     /// Returns a new `Neuron` that takes `num_inputs` inputs and weights its output by `weight`.
-    pub fn new(id: NeuronId, num_inputs: usize, weight: f64) -> Self {
+    pub fn new(id: NeuronId, num_inputs: usize, weight: T) -> Self {
         Self {
             id,
             num_inputs,
             weight,
             current_value: None,
-            previous_value: 0.0,
+            previous_value: T::zero(),
         }
     }
 
@@ -144,28 +147,28 @@ impl Neuron {
     }
 
     /// Returns the weight of this `Neuron`.
-    pub fn weight(&self) -> f64 {
+    pub fn weight(&self) -> T {
         self.weight
     }
 
     /// Returns a mutable reference to the weight of this `Neuron`.
-    pub fn mut_weight(&mut self) -> &mut f64 {
+    pub(crate) fn mut_weight(&mut self) -> &mut T {
         &mut self.weight
     }
 
-    pub(crate) fn current_value(&self) -> Option<f64> {
+    pub(crate) fn current_value(&self) -> Option<T> {
         self.current_value
     }
 
-    pub(crate) fn set_current_value(&mut self, value: Option<f64>) {
+    pub(crate) fn set_current_value(&mut self, value: Option<T>) {
         self.current_value = value;
     }
 
-    pub(crate) fn previous_value(&self) -> f64 {
+    pub(crate) fn previous_value(&self) -> T {
         self.previous_value
     }
 
-    pub(crate) fn mut_previous_value(&mut self) -> &mut f64 {
+    pub(crate) fn mut_previous_value(&mut self) -> &mut T {
         &mut self.previous_value
     }
 }
@@ -176,18 +179,18 @@ impl Neuron {
 /// of the jumper.
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct ForwardJumper {
+pub struct ForwardJumper<T> {
     // The ID of the source neuron
     source_id: NeuronId,
     // The weight of the forward jumper connection
     // This replaces the weight of the source neuron
-    weight: f64,
+    weight: T,
 }
 
-impl ForwardJumper {
+impl<T: Float> ForwardJumper<T> {
     /// Returns a new `ForwardJumper` that connects to the output of the neuron with the id and
     /// weights it by `weight`.
-    pub fn new(source_id: NeuronId, weight: f64) -> Self {
+    pub fn new(source_id: NeuronId, weight: T) -> Self {
         Self { source_id, weight }
     }
 
@@ -197,12 +200,12 @@ impl ForwardJumper {
     }
 
     /// Returns the weight of this `ForwardJumper`.
-    pub fn weight(&self) -> f64 {
+    pub fn weight(&self) -> T {
         self.weight
     }
 
     /// Returns a mutable reference to the weight of this `ForwardJumper`.
-    pub fn mut_weight(&mut self) -> &mut f64 {
+    pub fn mut_weight(&mut self) -> &mut T {
         &mut self.weight
     }
 }
@@ -213,18 +216,18 @@ impl ForwardJumper {
 /// any depth.
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct RecurrentJumper {
+pub struct RecurrentJumper<T> {
     // The ID of the source neuron
     source_id: NeuronId,
     // The weight of the forward jumper connection
     // This replaces the weight of the source neuron
-    weight: f64,
+    weight: T,
 }
 
-impl RecurrentJumper {
+impl<T: Float> RecurrentJumper<T> {
     /// Returns a new `RecurrentJumper` that connects to the output of the neuron with the id and
     /// weights it by `weight`.
-    pub fn new(source_id: NeuronId, weight: f64) -> Self {
+    pub fn new(source_id: NeuronId, weight: T) -> Self {
         Self { source_id, weight }
     }
 
@@ -234,12 +237,12 @@ impl RecurrentJumper {
     }
 
     /// Returns the weight of this `RecurrentJumper`.
-    pub fn weight(&self) -> f64 {
+    pub fn weight(&self) -> T {
         self.weight
     }
 
     /// Returns a mutable reference to the weight of this `RecurrentJumper`.
-    pub fn mut_weight(&mut self) -> &mut f64 {
+    pub fn mut_weight(&mut self) -> &mut T {
         &mut self.weight
     }
 }
@@ -250,22 +253,22 @@ impl RecurrentJumper {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(tag = "kind"))]
 #[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
-pub enum Gene {
+pub enum Gene<T: Float> {
     /// See [`Bias`].
-    Bias(Bias),
+    Bias(Bias<T>),
     /// See [`Input`].
-    Input(Input),
+    Input(Input<T>),
     /// See [`Neuron`].
-    Neuron(Neuron),
+    Neuron(Neuron<T>),
     /// See [`ForwardJumper`].
-    ForwardJumper(ForwardJumper),
+    ForwardJumper(ForwardJumper<T>),
     /// See [`RecurrentJumper`].
-    RecurrentJumper(RecurrentJumper),
+    RecurrentJumper(RecurrentJumper<T>),
 }
 
-impl Gene {
+impl<T: Float> Gene<T> {
     /// Returns the weight of this `Gene` or its value if it is a [`Bias`].
-    pub fn weight(&self) -> f64 {
+    pub fn weight(&self) -> T {
         match self {
             Self::Bias(bias) => bias.value(),
             Self::Input(input) => input.weight(),
@@ -276,7 +279,7 @@ impl Gene {
     }
 
     /// Returns a mutable reference to the weight of this `Gene` or its value if it is a [`Bias`].
-    pub(crate) fn mut_weight(&mut self) -> &mut f64 {
+    pub(crate) fn mut_weight(&mut self) -> &mut T {
         match self {
             Self::Bias(bias) => bias.mut_value(),
             Self::Input(input) => input.mut_weight(),
@@ -312,7 +315,7 @@ impl Gene {
     }
 
     /// Returns a reference to the contained [`Bias`] if this is a bias gene.
-    pub fn as_bias(&self) -> Option<&Bias> {
+    pub fn as_bias(&self) -> Option<&Bias<T>> {
         if let Self::Bias(bias) = self {
             Some(bias)
         } else {
@@ -321,7 +324,7 @@ impl Gene {
     }
 
     /// Returns a reference to the contained [`Input`] if this is an input gene.
-    pub fn as_input(&self) -> Option<&Input> {
+    pub fn as_input(&self) -> Option<&Input<T>> {
         if let Self::Input(input) = self {
             Some(input)
         } else {
@@ -330,7 +333,7 @@ impl Gene {
     }
 
     /// Returns a reference to the contained [`Neuron`] if this is a neuron gene.
-    pub fn as_neuron(&self) -> Option<&Neuron> {
+    pub fn as_neuron(&self) -> Option<&Neuron<T>> {
         if let Self::Neuron(neuron) = self {
             Some(neuron)
         } else {
@@ -339,7 +342,7 @@ impl Gene {
     }
 
     /// Returns a reference to the contained [`ForwardJumper`] if this is a forward jumper gene.
-    pub fn as_forward_jumper(&self) -> Option<&ForwardJumper> {
+    pub fn as_forward_jumper(&self) -> Option<&ForwardJumper<T>> {
         if let Self::ForwardJumper(forward) = self {
             Some(forward)
         } else {
@@ -348,7 +351,7 @@ impl Gene {
     }
 
     /// Returns a reference to the contained [`RecurrentJumper`] if this is a recurrent jumper gene.
-    pub fn as_recurrent_jumper(&self) -> Option<&RecurrentJumper> {
+    pub fn as_recurrent_jumper(&self) -> Option<&RecurrentJumper<T>> {
         if let Self::RecurrentJumper(recurrent) = self {
             Some(recurrent)
         } else {
@@ -357,7 +360,7 @@ impl Gene {
     }
 
     /// Returns a mutable reference to the contained [`Neuron`] if this is a neuron gene.
-    pub(crate) fn as_mut_neuron(&mut self) -> Option<&mut Neuron> {
+    pub(crate) fn as_mut_neuron(&mut self) -> Option<&mut Neuron<T>> {
         if let Self::Neuron(neuron) = self {
             Some(neuron)
         } else {
@@ -366,75 +369,75 @@ impl Gene {
     }
 }
 
-impl From<Bias> for Gene {
-    fn from(bias: Bias) -> Self {
+impl<T: Float> From<Bias<T>> for Gene<T> {
+    fn from(bias: Bias<T>) -> Self {
         Self::Bias(bias)
     }
 }
 
-impl From<Input> for Gene {
-    fn from(input: Input) -> Self {
+impl<T: Float> From<Input<T>> for Gene<T> {
+    fn from(input: Input<T>) -> Self {
         Self::Input(input)
     }
 }
 
-impl From<Neuron> for Gene {
-    fn from(neuron: Neuron) -> Self {
+impl<T: Float> From<Neuron<T>> for Gene<T> {
+    fn from(neuron: Neuron<T>) -> Self {
         Self::Neuron(neuron)
     }
 }
 
-impl From<ForwardJumper> for Gene {
-    fn from(forward: ForwardJumper) -> Self {
+impl<T: Float> From<ForwardJumper<T>> for Gene<T> {
+    fn from(forward: ForwardJumper<T>) -> Self {
         Self::ForwardJumper(forward)
     }
 }
 
-impl From<RecurrentJumper> for Gene {
-    fn from(recurrent: RecurrentJumper) -> Self {
+impl<T: Float> From<RecurrentJumper<T>> for Gene<T> {
+    fn from(recurrent: RecurrentJumper<T>) -> Self {
         Self::RecurrentJumper(recurrent)
     }
 }
 
 /// Like [`Gene`], but cannot be a [`Neuron`] gene.
 #[derive(Clone, Debug, PartialEq)]
-pub enum NonNeuronGene {
+pub enum NonNeuronGene<T> {
     /// See [`Bias`].
-    Bias(Bias),
+    Bias(Bias<T>),
     /// See [`Input`].
-    Input(Input),
+    Input(Input<T>),
     /// See [`ForwardJumper`].
-    ForwardJumper(ForwardJumper),
+    ForwardJumper(ForwardJumper<T>),
     /// See [`RecurrentJumper`].
-    RecurrentJumper(RecurrentJumper),
+    RecurrentJumper(RecurrentJumper<T>),
 }
 
-impl From<Bias> for NonNeuronGene {
-    fn from(bias: Bias) -> Self {
+impl<T> From<Bias<T>> for NonNeuronGene<T> {
+    fn from(bias: Bias<T>) -> Self {
         Self::Bias(bias)
     }
 }
 
-impl From<Input> for NonNeuronGene {
-    fn from(input: Input) -> Self {
+impl<T> From<Input<T>> for NonNeuronGene<T> {
+    fn from(input: Input<T>) -> Self {
         Self::Input(input)
     }
 }
 
-impl From<ForwardJumper> for NonNeuronGene {
-    fn from(forward: ForwardJumper) -> Self {
+impl<T> From<ForwardJumper<T>> for NonNeuronGene<T> {
+    fn from(forward: ForwardJumper<T>) -> Self {
         Self::ForwardJumper(forward)
     }
 }
 
-impl From<RecurrentJumper> for NonNeuronGene {
-    fn from(recurrent: RecurrentJumper) -> Self {
+impl<T> From<RecurrentJumper<T>> for NonNeuronGene<T> {
+    fn from(recurrent: RecurrentJumper<T>) -> Self {
         Self::RecurrentJumper(recurrent)
     }
 }
 
-impl From<NonNeuronGene> for Gene {
-    fn from(gene: NonNeuronGene) -> Self {
+impl<T: Float> From<NonNeuronGene<T>> for Gene<T> {
+    fn from(gene: NonNeuronGene<T>) -> Self {
         match gene {
             NonNeuronGene::Bias(bias) => Self::Bias(bias),
             NonNeuronGene::Input(input) => Self::Input(input),

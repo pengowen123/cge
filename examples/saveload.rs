@@ -13,9 +13,11 @@ struct Foo {
 
 fn main() {
     // Load the network from a file of any version
-    let (mut network, mut metadata, extra) =
-        Network::load_file::<Foo, _>("test_data/with_extra_data_v1.cge", WithRecurrentState(true))
-            .unwrap();
+    let (mut network, mut metadata, extra) = Network::<f64>::load_file::<Foo, _>(
+        "test_data/with_extra_data_v1.cge",
+        WithRecurrentState(true),
+    )
+    .unwrap();
 
     println!("metadata: {:?}", metadata);
     println!("extra: {:?}", extra);

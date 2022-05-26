@@ -1,5 +1,7 @@
 //! Evaluation of networks.
 
+use num_traits::Float;
+
 use std::collections::HashMap;
 use std::ops::{Index, Range};
 
@@ -11,10 +13,10 @@ use crate::stack::Stack;
 
 /// The inputs to a network.
 #[derive(Clone, Copy)]
-pub struct Inputs<'a>(pub &'a [f64]);
+pub struct Inputs<'a, T>(pub &'a [T]);
 
-impl<'a> Index<InputId> for Inputs<'a> {
-    type Output = f64;
+impl<'a, T> Index<InputId> for Inputs<'a, T> {
+    type Output = T;
 
     fn index(&self, index: InputId) -> &Self::Output {
         &self.0[index.as_usize()]
@@ -25,11 +27,11 @@ impl<'a> Index<InputId> for Inputs<'a> {
 ///
 /// If `ignore_final_neuron_weight` is `true`, the weight of the final neuron in the subgenome is
 /// ignored.
-pub fn evaluate_slice<'s>(
-    genome: &mut Vec<Gene>,
+pub fn evaluate_slice<'s, T: Float>(
+    genome: &mut Vec<Gene<T>>,
     range: Range<usize>,
-    inputs: Inputs,
-    stack: &'s mut Stack,
+    inputs: Inputs<T>,
+    stack: &'s mut Stack<T>,
     ignore_final_neuron_weight: bool,
     neuron_info: &HashMap<NeuronId, NeuronInfo>,
     activation: Activation,
@@ -43,7 +45,7 @@ pub fn evaluate_slice<'s>(
             // If it is a bias gene, push 1.0 and the gene's weight onto the stack
             let bias = genome[gene_index].as_bias().unwrap();
             weight = bias.value();
-            value = 1.0;
+            value = T::one();
         } else if genome[gene_index].is_input() {
             // If it is an input gene, push the corresponding input value and the gene's weight
             // onto the stack
@@ -67,7 +69,7 @@ pub fn evaluate_slice<'s>(
 
             if i == 0 && ignore_final_neuron_weight {
                 // Ignore weight for the final neuron in the genome if the flag is set
-                weight = 1.0;
+                weight = T::one();
             } else {
                 weight = neuron.weight();
             }
@@ -241,7 +243,7 @@ mod tests {
 
     #[test]
     fn test_recurrent_previous_value() {
-        let (mut net, _, ()) = Network::load_file(
+        let (mut net, _, ()) = Network::<f64>::load_file(
             get_file_path("test_network_recurrent.cge"),
             WithRecurrentState(false),
         )

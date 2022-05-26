@@ -5,6 +5,7 @@ mod error;
 mod functions;
 pub mod v1;
 
+use num_traits::Float;
 use serde::{Deserialize, Serialize};
 
 use crate::Network;
@@ -16,7 +17,7 @@ pub(crate) use functions::*;
 /// The latest metadata version.
 pub type Metadata = v1::Metadata;
 /// The latest encoding version.
-pub type Data<E> = v1::Data<E>;
+pub type Data<T, E> = v1::Data<T, E>;
 
 /// The portable encoding type, which can be serialized and deserialized to save or load networks
 /// and their metadata.
@@ -33,32 +34,32 @@ pub type Data<E> = v1::Data<E>;
 /// use cge::encoding::{PortableCGE, WithRecurrentState};
 ///
 /// // Any format supported by `serde` can be used here
-/// let deserialized: PortableCGE<()> = serde_json::from_str(&string).unwrap();
+/// let deserialized: PortableCGE<f64, ()> = serde_json::from_str(&string).unwrap();
 /// let (network, metadata, extra) = deserialized.build(WithRecurrentState(true)).unwrap();
 /// ```
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "version", content = "network")]
-pub enum PortableCGE<E> {
+pub enum PortableCGE<T: Float, E> {
     #[serde(rename = "1")]
-    V1(v1::Data<E>),
+    V1(v1::Data<T, E>),
 }
 
-impl<E> PortableCGE<E> {
+impl<T: Float, E> PortableCGE<T, E> {
     /// Builds the `PortableCGE` into a [`Network`], its [`CommonMetadata`], and the user defined
     /// extra data. If `with_state` is `true`, the [`Network`]'s recurrent state is loaded if it
     /// exists. If not loaded, it is initialized to all zeroes.
     pub fn build(
         self,
         with_state: WithRecurrentState,
-    ) -> Result<(Network, CommonMetadata, E), Error> {
+    ) -> Result<(Network<T>, CommonMetadata, E), Error> {
         match self {
             Self::V1(e) => e.build(with_state),
         }
     }
 }
 
-impl<E> From<v1::Data<E>> for PortableCGE<E> {
-    fn from(net: Data<E>) -> Self {
+impl<T: Float, E> From<v1::Data<T, E>> for PortableCGE<T, E> {
+    fn from(net: Data<T, E>) -> Self {
         Self::V1(net)
     }
 }
@@ -94,7 +95,7 @@ impl CommonMetadata {
 pub struct WithRecurrentState(pub bool);
 
 /// A trait implemented by all versioned encoding types.
-pub trait EncodingVersion<E>: Into<PortableCGE<E>> {
+pub trait EncodingVersion<T: Float, E>: Into<PortableCGE<T, E>> {
     /// The metadata type for this version.
     type Metadata: Into<CommonMetadata>;
 
@@ -103,20 +104,23 @@ pub trait EncodingVersion<E>: Into<PortableCGE<E>> {
     /// state is loaded if it exists. If not loaded, it is initialized to all zeroes.
     #[allow(clippy::new_ret_no_self)]
     fn new(
-        network: &Network,
+        network: &Network<T>,
         metadata: Self::Metadata,
         extra: E,
         with_state: WithRecurrentState,
-    ) -> PortableCGE<E>;
+    ) -> PortableCGE<T, E>;
 
     /// Converts `self` into a [`Network`][crate::Network], its metadata, and the user-defined
     /// extra data. The network's recurrent state is loaded if it exists and `with_state` is `true`.
-    fn build(self, with_state: WithRecurrentState) -> Result<(Network, CommonMetadata, E), Error>;
+    fn build(
+        self,
+        with_state: WithRecurrentState,
+    ) -> Result<(Network<T>, CommonMetadata, E), Error>;
 }
 
 /// A trait implemented by all versioned metadata types.
-pub trait MetadataVersion<E> {
-    type Data: EncodingVersion<E, Metadata = Self>;
+pub trait MetadataVersion<T: Float, E> {
+    type Data: EncodingVersion<T, E, Metadata = Self>;
 }
 
 #[cfg(test)]
@@ -139,7 +143,7 @@ mod tests {
 
         // Load and save a network in the v1 format
         let (network, metadata, extra) =
-            Network::load_str::<()>(&loaded_string, WithRecurrentState(true)).unwrap();
+            Network::<f64>::load_str::<()>(&loaded_string, WithRecurrentState(true)).unwrap();
         let metadata = v1::Metadata::new(metadata.description);
         let saved_string = network
             .to_string(metadata, extra, WithRecurrentState(true))

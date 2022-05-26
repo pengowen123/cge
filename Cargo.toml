@@ -16,6 +16,9 @@ repository = "https://github.com/pengowen123/cge"
 default = ["serde", "serde_json"]
 serde_json = ["serde_json/default", "serde"]
 
+[dependencies]
+num-traits = "0.2.15"
+
 [dependencies.serde_json]
 version = "1.0"
 optional = true
