@@ -4,7 +4,9 @@ mod error;
 mod evaluate;
 mod utils;
 
-pub use error::{Error, IndexOutOfBoundsError, MismatchedLengthsError, MutationError};
+pub use error::{
+    Error, IndexOutOfBoundsError, MismatchedLengthsError, MutationError, NotEnoughInputsError,
+};
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -402,16 +404,16 @@ impl Network {
         Ok(())
     }
 
-    /// Evaluates the neural network with the given inputs, returning a vector of outputs. The
-    /// encoding can encode recurrent connections and bias inputs, so an internal state is used. It
-    /// is important to run the clear_state method before calling evaluate again, unless it is
-    /// desired to allow data carry over from the previous evaluation, for example if the network
-    /// is being used as a real time controller.
+    /// Evaluates the network on the given inputs. Repeated calls to this method may not return
+    /// identical returns for the same inputs because networks may store internal state (see
+    /// [`recurrent_state`][Self::recurrent_state] and related methods). This state can be cleared
+    /// with [`clear_state`][Self::clear_state] as needed.
     ///
-    /// If too many inputs are given, the extras are discarded.
-    pub fn evaluate(&mut self, inputs: &[f64]) -> Option<&[f64]> {
+    /// If too many inputs are given, the extras are discarded. Returns `Err` if too few inputs were
+    /// provided (see [`num_inputs`][Self::num_inputs]).
+    pub fn evaluate(&mut self, inputs: &[f64]) -> Result<&[f64], NotEnoughInputsError> {
         if inputs.len() < self.num_inputs {
-            return None;
+            return Err(NotEnoughInputsError::new(self.num_inputs(), inputs.len()));
         }
 
         // Clear any previous network outputs
@@ -432,7 +434,7 @@ impl Network {
         // Perform post-evaluation updates/cleanup
         update_stored_values(&mut self.genome);
 
-        Some(self.stack.as_slice())
+        Ok(self.stack.as_slice())
     }
 
     /// Clears the persistent state of the neural network.
@@ -1536,7 +1538,7 @@ pub(crate) mod tests {
         assert_eq!(expected_next_neuron_id, network.next_neuron_id());
 
         // Check that evaluation works and doesn't crash
-        assert!(network.evaluate(&[1.0; 10]).is_some());
+        assert!(network.evaluate(&[1.0; 10]).is_ok());
 
         // Check that the metadata is mutated in a way that is equivalent to rebuilding it
         check_mutated_metadata(&mut network);
@@ -1915,7 +1917,7 @@ pub(crate) mod tests {
 
             check_mutated_metadata(&mut network);
 
-            assert!(network.evaluate(&[1.0; 10]).is_some());
+            assert!(network.evaluate(&[1.0; 10]).is_ok());
             network.clear_state();
         }
 
@@ -1932,9 +1934,11 @@ pub(crate) mod tests {
         assert_eq!(converted_network, network);
 
         // Save the network for later inspection
-        network.evaluate(&[1.0; 10]);
-        let path =
-            get_file_path("test_output", &format!("random_{}_output_network.cge", network.num_outputs()));
+        network.evaluate(&[1.0; 10]).unwrap();
+        let path = get_file_path(
+            "test_output",
+            &format!("random_{}_output_network.cge", network.num_outputs()),
+        );
         network
             .to_file(
                 Metadata::new("A randomly-generated network.".to_string()),

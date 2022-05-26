@@ -127,6 +127,7 @@ mod tests {
     use assert_approx_eq::assert_approx_eq;
 
     use super::*;
+    use crate::network::NotEnoughInputsError;
     use crate::{Network, WithRecurrentState};
 
     fn get_file_path(file_name: &str) -> String {
@@ -168,7 +169,7 @@ mod tests {
         assert_eq!(output2[0], 0.40056);
 
         // Too few inputs returns `None`
-        assert!(net.evaluate(&[1.0]).is_none());
+        assert_eq!(Err(NotEnoughInputsError::new(2, 1)), net.evaluate(&[1.0]));
     }
 
     #[test]

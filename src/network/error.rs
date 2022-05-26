@@ -123,6 +123,7 @@ impl fmt::Display for MutationError {
 
 impl error::Error for MutationError {}
 
+/// An array of an incorrect length was passed to a [`Network`][crate::Network] method.
 #[derive(Clone, Debug)]
 pub struct MismatchedLengthsError;
 
@@ -137,6 +138,7 @@ impl fmt::Display for MismatchedLengthsError {
 
 impl error::Error for MismatchedLengthsError {}
 
+/// The index was out of bounds.
 #[derive(Clone, Debug)]
 pub struct IndexOutOfBoundsError;
 
@@ -147,3 +149,28 @@ impl fmt::Display for IndexOutOfBoundsError {
 }
 
 impl error::Error for IndexOutOfBoundsError {}
+
+/// Too few inputs were passed to [`Network::evaluate`][crate::Network].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NotEnoughInputsError {
+    expected: usize,
+    provided: usize,
+}
+
+impl NotEnoughInputsError {
+    pub(crate) fn new(expected: usize, provided: usize) -> Self {
+        Self { expected, provided }
+    }
+}
+
+impl fmt::Display for NotEnoughInputsError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "too few inputs to a network: expected {}, provided {}",
+            self.expected, self.provided
+        )
+    }
+}
+
+impl error::Error for NotEnoughInputsError {}
