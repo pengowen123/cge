@@ -31,80 +31,80 @@ impl Activation {
     /// Applies the activation function to the input.
     pub fn apply<T: Float>(&self, x: T) -> T {
         match self {
-            Activation::Linear => linear(x),
-            Activation::UnitStep => unit_step(x),
-            Activation::Sign => sign(x),
-            Activation::Sigmoid => sigmoid(x),
-            Activation::Tanh => tanh(x),
-            Activation::SoftSign => soft_sign(x),
-            Activation::BentIdentity => bent_identity(x),
-            Activation::Relu => relu(x),
+            Activation::Linear => Self::linear(x),
+            Activation::UnitStep => Self::unit_step(x),
+            Activation::Sign => Self::sign(x),
+            Activation::Sigmoid => Self::sigmoid(x),
+            Activation::Tanh => Self::tanh(x),
+            Activation::SoftSign => Self::soft_sign(x),
+            Activation::BentIdentity => Self::bent_identity(x),
+            Activation::Relu => Self::relu(x),
         }
     }
 
     /// Returns the corresponding function to the `Activation`.
     pub fn get_function<T: Float>(&self) -> fn(T) -> T {
         match self {
-            Activation::Linear => linear,
-            Activation::UnitStep => unit_step,
-            Activation::Sign => sign,
-            Activation::Sigmoid => sigmoid,
-            Activation::Tanh => tanh,
-            Activation::SoftSign => soft_sign,
-            Activation::BentIdentity => bent_identity,
-            Activation::Relu => relu,
+            Activation::Linear => Self::linear,
+            Activation::UnitStep => Self::unit_step,
+            Activation::Sign => Self::sign,
+            Activation::Sigmoid => Self::sigmoid,
+            Activation::Tanh => Self::tanh,
+            Activation::SoftSign => Self::soft_sign,
+            Activation::BentIdentity => Self::bent_identity,
+            Activation::Relu => Self::relu,
         }
     }
-}
 
-/// Outputs `x`.
-pub fn linear<T>(x: T) -> T {
-    x
-}
-
-/// Heaviside/unit step function. Outputs `1` for `x > 0`, or `0` otherwise.
-pub fn unit_step<T: Float>(x: T) -> T {
-    if x > T::zero() {
-        T::one()
-    } else {
-        T::zero()
+    /// Outputs `x`.
+    pub fn linear<T: Float>(x: T) -> T {
+        x
     }
-}
 
-/// Outputs `1` for `x > 0`, `0` for `x = 0`, or `-1` otherwise.
-pub fn sign<T: Float>(x: T) -> T {
-    if x > T::zero() {
-        T::one()
-    } else if x == T::zero() {
-        T::zero()
-    } else {
-        -T::one()
+    /// Heaviside/unit step function. Outputs `1` for `x > 0`, or `0` otherwise.
+    pub fn unit_step<T: Float>(x: T) -> T {
+        if x > T::zero() {
+            T::one()
+        } else {
+            T::zero()
+        }
     }
-}
 
-/// Logistic function. Outputs `1 / (1 + exp(-x))`.
-pub fn sigmoid<T: Float>(x: T) -> T {
-    T::one() / (T::one() + (-x).exp())
-}
+    /// Outputs `1` for `x > 0`, `0` for `x = 0`, or `-1` otherwise.
+    pub fn sign<T: Float>(x: T) -> T {
+        if x > T::zero() {
+            T::one()
+        } else if x == T::zero() {
+            T::zero()
+        } else {
+            -T::one()
+        }
+    }
 
-/// Outputs `tanh(x)`.
-pub fn tanh<T: Float>(x: T) -> T {
-    x.tanh()
-}
+    /// Logistic function. Outputs `1 / (1 + exp(-x))`.
+    pub fn sigmoid<T: Float>(x: T) -> T {
+        T::one() / (T::one() + (-x).exp())
+    }
 
-/// Outputs `x / (1 + abs(x))`.
-pub fn soft_sign<T: Float>(x: T) -> T {
-    x / (T::one() + x.abs())
-}
+    /// Outputs `tanh(x)`.
+    pub fn tanh<T: Float>(x: T) -> T {
+        x.tanh()
+    }
 
-/// Outputs `(sqrt(x^2 + 1) - 1) / 2 + x`.
-pub fn bent_identity<T: Float>(x: T) -> T {
-    (((x.powi(2) + T::one()).sqrt() - T::one()) / (T::one() + T::one())) + x
-}
+    /// Outputs `x / (1 + abs(x))`.
+    pub fn soft_sign<T: Float>(x: T) -> T {
+        x / (T::one() + x.abs())
+    }
 
-/// Rectified linear unit. Outputs `max(0, x)`.
-pub fn relu<T: Float>(x: T) -> T {
-    x.max(T::zero())
+    /// Outputs `(sqrt(x^2 + 1) - 1) / 2 + x`.
+    pub fn bent_identity<T: Float>(x: T) -> T {
+        (((x.powi(2) + T::one()).sqrt() - T::one()) / (T::one() + T::one())) + x
+    }
+
+    /// Rectified linear unit. Outputs `max(0, x)`.
+    pub fn relu<T: Float>(x: T) -> T {
+        x.max(T::zero())
+    }
 }
 
 #[cfg(test)]
