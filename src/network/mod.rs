@@ -144,7 +144,7 @@ impl NeuronInfo {
 /// # let network: Network<f64> = unimplemented!();
 /// use cge::encoding::{Metadata, WithRecurrentState};
 ///
-/// let metadata = Metadata::new("a network description".to_string());
+/// let metadata = Metadata::new(Some("a network description".into()));
 /// let extra = (4, "arbitrary extra data");
 /// network.to_file(metadata, extra, WithRecurrentState(true), "network.cge", true);
 /// ```
@@ -314,7 +314,7 @@ impl<T: Float> Network<T> {
     /// #     ), WithRecurrentState(true)).unwrap();
     /// use cge::encoding::{Metadata, PortableCGE, WithRecurrentState};
     ///
-    /// let metadata = Metadata::new("a description".to_string());
+    /// let metadata = Metadata::new(Some("a description".into()));
     /// let extra = ();
     /// let serializable = network.to_serializable(metadata, extra, WithRecurrentState(true));
     ///
@@ -2093,7 +2093,7 @@ pub(crate) mod tests {
         );
         network
             .to_file(
-                Metadata::new("A randomly-generated network.".to_string()),
+                Metadata::new(Some("A randomly-generated network.".into())),
                 (),
                 WithRecurrentState(true),
                 path,

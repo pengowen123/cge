@@ -76,10 +76,8 @@ pub struct Metadata {
 
 impl Metadata {
     /// Returns a new `Metadata` for a [`Network`].
-    pub fn new<S: Into<Option<String>>>(description: S) -> Self {
-        Self {
-            description: description.into(),
-        }
+    pub fn new(description: Option<String>) -> Self {
+        Self { description }
     }
 }
 

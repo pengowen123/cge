@@ -29,7 +29,7 @@ fn main() {
     // Save the network to a file of the latest version
     // A different version may be specified by using a more specific metadata type here (e.g.,
     // encoding::v1::Metadata or just `metadata.into_v1()`)
-    metadata.description = "a new description".to_string().into();
+    metadata.description = Some("a new description".into());
     let metadata = metadata.into_latest_version().unwrap();
     network
         .to_file(
