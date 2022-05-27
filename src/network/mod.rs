@@ -672,6 +672,7 @@ impl<T: Float> Network<T> {
     }
 
     /// Returns the number of [`Gene`]s in the `Network`.
+    #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.genome.len()
     }

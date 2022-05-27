@@ -17,7 +17,7 @@ impl<T> ops::Deref for Stack<T> {
 
 impl<T> Stack<T> {
     pub fn new() -> Self {
-        Stack { 0: Vec::new() }
+        Stack(Vec::new())
     }
 
     /// Pops `count` items off the stack and returns their sum. Returns `None` if there are fewer
