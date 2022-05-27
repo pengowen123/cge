@@ -1,4 +1,4 @@
-//! Version one of the encoding.
+//! Version one of the encoding. See [`Data`] and [`Metadata`].
 
 use num_traits::Float;
 use serde::{Deserialize, Serialize};
@@ -14,10 +14,16 @@ use crate::Network;
 /// format.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Data<T: Float, E> {
+    /// Metadata for the [`Network`].
     pub metadata: Metadata,
+    /// The activation function of the [`Network`].
     pub activation: Activation,
+    /// The genome of the [`Network`].
     pub genome: Vec<Gene<T>>,
+    /// The recurrent state of the [`Network`][crate::Network] (see
+    /// [`Network::recurrent_state`][crate::Network::recurrent_state]).
     pub recurrent_state: Option<Vec<T>>,
+    /// Arbitrary, user-defined extra data for the [`Network`].
     pub extra: Extra<E>,
 }
 
@@ -64,10 +70,12 @@ impl<T: Float, E> EncodingVersion<T, E> for Data<T, E> {
 /// Version one metadata.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Metadata {
+    /// An optional description for a [`Network`].
     pub description: Option<String>,
 }
 
 impl Metadata {
+    /// Returns a new `Metadata` for a [`Network`].
     pub fn new<S: Into<Option<String>>>(description: S) -> Self {
         Self {
             description: description.into(),

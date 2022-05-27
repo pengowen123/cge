@@ -1,4 +1,4 @@
-//! The neural network struct.
+//! The main neural network type. See [`Network`] for full documentation.
 
 mod error;
 mod evaluate;
@@ -29,7 +29,21 @@ use crate::gene::*;
 use crate::stack::Stack;
 use evaluate::Inputs;
 
-/// Info about a neuron in a genome.
+/// Info about a [`Neuron`] in a genome. The index of the neuron is the start of its subgenome
+/// range.
+///
+/// # Examples
+/// ```no_run
+/// # use cge::Network;
+/// # let network: Network<f64> = unimplemented!();
+/// use cge::gene::NeuronId;
+/// let id = NeuronId::new(0);
+/// let index = network
+///     .neuron_info(id)
+///     .unwrap()
+///     .subgenome_range()
+///     .start;
+/// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NeuronInfo {
     subgenome_range: Range<usize>,
@@ -44,19 +58,95 @@ impl NeuronInfo {
         }
     }
 
-    /// Returns the index range of the subgenome of this neuron.
+    /// Returns the index range of the subgenome of this [`Neuron`].
     pub fn subgenome_range(&self) -> Range<usize> {
         self.subgenome_range.clone()
     }
 
-    /// Returns the depth of this neuron.
+    /// Returns the depth of this [`Neuron`].
     ///
-    /// This is the number of implicit (non-jumper) connections between this neuron and the
+    /// This is the number of implicit (non-jumper) connections between this [`Neuron`] and the
     /// corresponding output neuron.
     pub fn depth(&self) -> usize {
         self.depth
     }
 }
+
+/// The main neural network type. A network takes an array of inputs and produces some number of
+/// outputs, possibly storing internal state in the process.
+///
+/// # Creating a `Network`
+///
+/// The simplest way to create a `Network`s is to load an existing one from a `cge` file or string
+/// using [`load_file`][Self::load_file] and [`load_str`][Self::load_str], respectively. These
+/// methods only work with JSON-encoded files and strings; to load from other formats, see
+/// [`PortableCGE`].
+///
+/// ```no_run
+/// use cge::{Network, WithRecurrentState};
+///
+/// let (mut network, metadata, extra) =
+///     Network::<f64>::load_file::<(), _>("network.cge", WithRecurrentState(true)).unwrap();
+/// ```
+///
+/// `Network`s can also be created manually from a genome and [`Activation`] function using
+/// [`new`][Self::new], which is necessary if the `serde` feature is disabled.
+///
+/// ```
+/// use cge::{Activation, Network};
+/// use cge::gene::*;
+///
+/// let genome = vec![
+///     Neuron::new(NeuronId::new(0), 2, 0.5).into(),
+///     Input::new(InputId::new(0), 0.8).into(),
+///     Bias::new(0.6).into(),
+/// ];
+/// let mut network = Network::<f64>::new(genome, Activation::Tanh).unwrap();
+/// ```
+///
+/// # Using a `Network`
+///
+/// The main purpose of a `Network` is to evaluate it on some input using
+/// [`evaluate`][Self::evaluate].
+///
+/// ```no_run
+/// # use cge::Network;
+/// # let mut network: Network<f64> = unimplemented!();
+/// println!("output: {:?}", network.evaluate(&[1.0, 2.0]).unwrap());
+/// println!("output: {:?}", network.evaluate(&[3.0, 0.5]).unwrap());
+/// ```
+///
+/// The internal state of the network, if it exists, can be cleared as needed using
+/// [`clear_state`][Self::clear_state].
+///
+/// Several mutation operators are also provided to allow the modification of networks:
+///
+/// ```no_run
+/// # use cge::Network;
+/// # let mut network: Network<f64> = unimplemented!();
+/// use cge::gene::{NeuronId, Bias};
+///
+/// // Add a new `Bias` gene as an input to the neuron with ID 2
+/// let new_gene = Bias::new(0.1);
+/// network.add_non_neuron(NeuronId::new(2), new_gene);
+/// ```
+///
+/// Many more methods are provided to interact with networks; see the method list below.
+///
+/// # Saving a `Network`
+///
+/// After creating or modifying a `Network`, it can be saved to a file or string using
+/// [`to_file`][Self::to_file] and [`to_string`][Self::to_string], respectively.
+///
+/// ```no_run
+/// # use cge::Network;
+/// # let network: Network<f64> = unimplemented!();
+/// use cge::encoding::{Metadata, WithRecurrentState};
+///
+/// let metadata = Metadata::new("a network description".to_string());
+/// let extra = (4, "arbitrary extra data");
+/// network.to_file(metadata, extra, WithRecurrentState(true), "network.cge", true);
+/// ```
 
 // NOTE: All `Network` objects must be fully valid, and all methods assume this to be true
 //       Any modifications to the genome must be matched with a validity check and corresponding
@@ -85,6 +175,11 @@ pub struct Network<T: Float> {
 }
 
 impl<T: Float> Network<T> {
+    /// Builds a new `Network` from a genome that uses the provided [`Neuron`] activation function.
+    /// Returns `Err` if the genome is invalid.
+    ///
+    /// This can be used over [`load_file`][Self::load_file] and related methods if the `serde`
+    /// support features are disabled.
     pub fn new(genome: Vec<Gene<T>>, activation: Activation) -> Result<Self, Error> {
         let mut network = Self {
             genome,
@@ -104,12 +199,14 @@ impl<T: Float> Network<T> {
     }
 
     /// Loads a previously-saved network, its metadata, and the user-defined extra data from a
-    /// string. If no extra data is present, `E` can be set to `()`. If `with_state` is `true`, the
-    /// network's recurrent state is loaded if it exists. If not loaded, it is initialized to all
-    /// zeroes.
+    /// string. If no extra data is present/needed, `E` can be set to `()`. If `with_state` is
+    /// `true`, the network's recurrent state is loaded if it exists. If not loaded, it is
+    /// initialized to all zeroes.
     ///
     /// The extra data returned will be [`Extra::Ok`] if it matches the requested type `E`, or
     /// [`Extra::Other`] otherwise.
+    ///
+    /// This method only works with JSON data. For other formats, see [`PortableCGE`].
     #[cfg(all(feature = "serde", feature = "serde_json"))]
     pub fn load_str<'a, E>(
         s: &'a str,
@@ -123,12 +220,14 @@ impl<T: Float> Network<T> {
     }
 
     /// Loads a previously-saved network, its metadata, and the user-defined extra data from a file.
-    /// If no extra data is present, `E` can be set to `()`. If `with_state` is `true`, the
+    /// If no extra data is present/needed, `E` can be set to `()`. If `with_state` is `true`, the
     /// network's recurrent state is loaded if it exists. If not loaded, it is initialized to all
     /// zeroes.
     ///
     /// The extra data returned will be [`Extra::Ok`] if it matches the requested type `E`, or
     /// [`Extra::Other`] otherwise.
+    ///
+    /// This method only works with JSON data. For other formats, see [`PortableCGE`].
     #[cfg(all(feature = "serde", feature = "serde_json"))]
     pub fn load_file<E, P>(
         path: P,
@@ -148,6 +247,9 @@ impl<T: Float> Network<T> {
     ///
     /// Using [`Metadata`][encoding::Metadata] will automatically use the latest encoding version,
     /// but a specific `Metadata` type can be used to select a specific version instead.
+    ///
+    /// This method encodes the data as JSON. To use other formats, see
+    /// [`to_serializable`][Self::to_serializable] and [`PortableCGE`].
     #[cfg(all(feature = "serde", feature = "serde_json"))]
     pub fn to_string<E, M>(
         &self,
@@ -171,6 +273,9 @@ impl<T: Float> Network<T> {
     /// but a specific `Metadata` type can be used to select a specific version instead.
     ///
     /// Recursively creates missing directories if `create_dirs` is `true`.
+    ///
+    /// This method encodes the data as JSON. To use other formats, see
+    /// [`to_serializable`][Self::to_serializable] and [`PortableCGE`].
     #[cfg(all(feature = "serde", feature = "serde_json"))]
     pub fn to_file<E, M, P>(
         &self,
@@ -431,6 +536,22 @@ impl<T: Float> Network<T> {
     ///
     /// If too many inputs are given, the extras are discarded. Returns `Err` if too few inputs were
     /// provided (see [`num_inputs`][Self::num_inputs]).
+    ///
+    /// # Borrowing
+    ///
+    /// This method returns a reference to the network's output to avoid unnecessary allocations. If
+    /// consecutive `evaluate` calls cause borrowing errors, the output can be turned into a `Vec`
+    /// instead.
+    ///
+    /// ```no_run
+    /// # use cge::Network;
+    /// # let mut network: Network<f64> = unimplemented!();
+    /// let output_1 = network.evaluate(&[1.0]).unwrap().to_vec();
+    /// let output_2 = network.evaluate(&[1.0]).unwrap().to_vec();
+    ///
+    /// println!("output 1: {:?}", output_1);
+    /// println!("output 2: {:?}", output_2);
+    /// ```
     pub fn evaluate(&mut self, inputs: &[T]) -> Result<&[T], NotEnoughInputsError> {
         if inputs.len() < self.num_inputs {
             return Err(NotEnoughInputsError::new(self.num_inputs(), inputs.len()));
@@ -457,7 +578,10 @@ impl<T: Float> Network<T> {
         Ok(self.stack.as_slice())
     }
 
-    /// Clears the recurrent state of the neural network.
+    /// Clears the recurrent state of the `Network`, which ordinarily might cause its output to vary
+    /// for the same inputs. See also [`recurrent_state`][Self::recurrent_state] and
+    /// [`set_recurrent_state`][Self::set_recurrent_state] for reading and writing this state
+    /// instead.
     ///
     /// This state is only used by [`RecurrentJumper`] connections, so calling this method is
     /// unnecessary if the network does not contain them.
@@ -623,7 +747,7 @@ impl<T: Float> Network<T> {
         &self.gene_parents
     }
 
-    /// Returns the ID to be used for the next neuron added to this `Network`.
+    /// Returns the ID to be used for the next [`Neuron`] added to this `Network`.
     pub fn next_neuron_id(&self) -> NeuronId {
         NeuronId::new(self.next_neuron_id)
     }
@@ -652,7 +776,7 @@ impl<T: Float> Network<T> {
         }
     }
 
-    /// Adds a non-neuron gene as an input to a `parent` [`Neuron`].
+    /// Adds a [`NonNeuronGene`] as an input to a `parent` [`Neuron`].
     pub fn add_non_neuron<G: Into<NonNeuronGene<T>>>(
         &mut self,
         parent: NeuronId,
@@ -661,7 +785,7 @@ impl<T: Float> Network<T> {
         self.add_genes(parent, None, vec![gene.into()]).map(|_| ())
     }
 
-    /// Adds a sequence of non-neuron genes as an input to a `parent` [`Neuron`].
+    /// Adds a sequence of [`NonNeuronGene`]s as inputs to a `parent` [`Neuron`].
     pub fn add_non_neurons(
         &mut self,
         parent: NeuronId,
@@ -670,12 +794,12 @@ impl<T: Float> Network<T> {
         self.add_genes(parent, None, genes).map(|_| ())
     }
 
-    /// Adds a subnetwork (a [`Neuron`] gene with its inputs) as an input to a `parent` [`Neuron`].
+    /// Adds a subnetwork (a [`Neuron`] gene with its inputs) as an input to a `parent` neuron.
     /// Returns the ID of the new subnetwork's neuron.
     ///
     /// The new neuron will have the ID given by [`next_neuron_id`][Self::next_neuron_id].
-    /// Recurrent connections sourcing from the new neuron may be included in `inputs` by pointing
-    /// them to this ID.
+    /// [`RecurrentJumper`] connections sourcing from the new neuron may be included in `inputs` by
+    /// pointing them to this ID.
     pub fn add_subnetwork(
         &mut self,
         parent: NeuronId,
@@ -686,7 +810,7 @@ impl<T: Float> Network<T> {
             .map(Option::unwrap)
     }
 
-    /// Adds a sequence of genes immediately following the `parent` neuron. Adds the genes as
+    /// Adds a sequence of genes immediately following the `parent` [`Neuron`]. Adds the genes as
     /// inputs to a new subnetwork if `subnetwork_weight` is `Some`. Checks that each gene is valid
     /// and updates any relevant network metadata.
     ///
@@ -874,7 +998,7 @@ impl<T: Float> Network<T> {
         Ok(new_neuron_id)
     }
 
-    /// Removes and returns the non-neuron gene at the index if it is not the only input to its
+    /// Removes and returns the non-[`Neuron`] gene at the index if it is not the only input to its
     /// parent neuron.
     pub fn remove_non_neuron(&mut self, index: usize) -> Result<Gene<T>, MutationError> {
         // O(n)
@@ -961,8 +1085,9 @@ impl<T: Float> Network<T> {
             })
     }
 
-    /// Returns an iterator of neuron IDs with depths greater than `parent_depth`, which can be
-    /// used as sources for a [`ForwardJumper`] gene under a parent neuron with depth `parent_depth`.
+    /// Returns an iterator of [`NeuronId`]s with depths greater than `parent_depth`, which can be
+    /// used as sources for a [`ForwardJumper`] gene under a parent [`Neuron`] with depth
+    /// `parent_depth`.
     pub fn get_valid_forward_jumper_sources(
         &self,
         parent_depth: usize,

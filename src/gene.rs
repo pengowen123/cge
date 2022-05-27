@@ -1,4 +1,4 @@
-//! Different types of genes that can be used in a network genome.
+//! Different types of genes that can be used in a [`Network`][crate::Network] genome.
 
 use num_traits::Float;
 #[cfg(feature = "serde")]
@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 /// A bias gene.
 ///
-/// Adds a constant value to the network.
+/// Adds a constant value to the [`Network`][crate::Network].
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Bias<T> {
@@ -14,7 +14,7 @@ pub struct Bias<T> {
 }
 
 impl<T: Float> Bias<T> {
-    /// Returns a new `Bias` that adds a constant `value` to the network.
+    /// Returns a new `Bias` that adds a constant `value` to the [`Network`][crate::Network].
     pub fn new(value: T) -> Self {
         Self { value }
     }
@@ -30,16 +30,18 @@ impl<T: Float> Bias<T> {
     }
 }
 
-/// The ID of a network input.
+/// The ID of a [`Network`][crate::Network]'s [`Input`].
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct InputId(usize);
 
 impl InputId {
+    /// Returns a new `InputId` with the given id.
     pub fn new(id: usize) -> Self {
         Self(id)
     }
 
+    /// Returns this `InputId` as a `usize`.
     pub fn as_usize(&self) -> usize {
         self.0
     }
@@ -47,7 +49,7 @@ impl InputId {
 
 /// An input gene.
 ///
-/// Adds a connection to one of the network inputs.
+/// Adds a connection to one of the [`Network`][crate::Network] inputs.
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Input<T> {
@@ -57,13 +59,13 @@ pub struct Input<T> {
 }
 
 impl<T: Float> Input<T> {
-    /// Returns a new `Input` that connects to the network input with the id and weights it by
-    /// `weight`.
+    /// Returns a new `Input` that connects to the [`Network`][crate::Network] input with the id
+    /// and weights it by `weight`.
     pub fn new(id: InputId, weight: T) -> Self {
         Self { id, weight }
     }
 
-    /// Returns the id of the network input this `Input` refers to.
+    /// Returns the id of the [`Network`][crate::Network] input this `Input` refers to.
     pub fn id(&self) -> InputId {
         self.id
     }
@@ -79,16 +81,18 @@ impl<T: Float> Input<T> {
     }
 }
 
-/// The ID of a neuron in a network.
+/// The ID of a [`Neuron`] in a [`Network`][crate::Network].
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct NeuronId(usize);
 
 impl NeuronId {
+    /// Returns a new `NeuronId` with the given id.
     pub fn new(id: usize) -> Self {
         Self(id)
     }
 
+    /// Returns this `NeuronId` as a `usize`.
     pub fn as_usize(&self) -> usize {
         self.0
     }
@@ -212,8 +216,8 @@ impl<T: Float> ForwardJumper<T> {
 
 /// A recurrent jumper gene.
 ///
-/// Adds a connection to the output from the previous network evaluation of a source neuron with
-/// any depth.
+/// Adds a connection to the output from the previous [`Network`][crate::Network] evaluation of a
+/// source [`Neuron`] with any depth.
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct RecurrentJumper<T> {

@@ -1,3 +1,5 @@
+//! Error types related to the portable encoding.
+
 #[cfg(feature = "serde_json")]
 use serde_json;
 
