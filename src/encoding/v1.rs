@@ -3,7 +3,9 @@
 use num_traits::Float;
 use serde::{Deserialize, Serialize};
 
-use super::{CommonMetadata, EncodingVersion, MetadataVersion, PortableCGE, WithRecurrentState};
+use super::{
+    CommonMetadata, EncodingVersion, Extra, MetadataVersion, PortableCGE, WithRecurrentState,
+};
 use crate::activation::Activation;
 use crate::gene::Gene;
 use crate::Network;
@@ -16,7 +18,7 @@ pub struct Data<T: Float, E> {
     pub activation: Activation,
     pub genome: Vec<Gene<T>>,
     pub recurrent_state: Option<Vec<T>>,
-    pub extra: E,
+    pub extra: Extra<E>,
 }
 
 impl<T: Float, E> EncodingVersion<T, E> for Data<T, E> {
@@ -38,7 +40,7 @@ impl<T: Float, E> EncodingVersion<T, E> for Data<T, E> {
             activation: network.activation(),
             genome: network.genome().into(),
             recurrent_state,
-            extra,
+            extra: Extra::Ok(extra),
         }
         .into()
     }
@@ -46,7 +48,7 @@ impl<T: Float, E> EncodingVersion<T, E> for Data<T, E> {
     fn build(
         self,
         with_state: WithRecurrentState,
-    ) -> Result<(Network<T>, CommonMetadata, E), super::Error> {
+    ) -> Result<(Network<T>, CommonMetadata, Extra<E>), super::Error> {
         let mut network = Network::new(self.genome, self.activation)?;
 
         if with_state.0 {

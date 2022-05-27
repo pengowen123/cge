@@ -5,7 +5,7 @@ use cge::{Network, WithRecurrentState};
 use serde::{Deserialize, Serialize};
 
 // Custom data to be stored alongside the saved network
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct Foo {
     x: i32,
     y: [f64; 2],

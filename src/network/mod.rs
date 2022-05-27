@@ -24,7 +24,7 @@ use crate::activation::Activation;
 #[cfg(all(feature = "serde", feature = "serde_json"))]
 use crate::encoding::{self, CommonMetadata};
 #[cfg(feature = "serde")]
-use crate::encoding::{EncodingVersion, MetadataVersion, PortableCGE, WithRecurrentState};
+use crate::encoding::{EncodingVersion, Extra, MetadataVersion, PortableCGE, WithRecurrentState};
 use crate::gene::*;
 use crate::stack::Stack;
 use evaluate::Inputs;
@@ -107,11 +107,14 @@ impl<T: Float> Network<T> {
     /// string. If no extra data is present, `E` can be set to `()`. If `with_state` is `true`, the
     /// network's recurrent state is loaded if it exists. If not loaded, it is initialized to all
     /// zeroes.
+    ///
+    /// The extra data returned will be [`Extra::Ok`] if it matches the requested type `E`, or
+    /// [`Extra::Other`] otherwise.
     #[cfg(all(feature = "serde", feature = "serde_json"))]
     pub fn load_str<'a, E>(
         s: &'a str,
         with_state: WithRecurrentState,
-    ) -> Result<(Self, CommonMetadata, E), encoding::Error>
+    ) -> Result<(Self, CommonMetadata, Extra<E>), encoding::Error>
     where
         T: Deserialize<'a>,
         E: Deserialize<'a>,
@@ -123,11 +126,14 @@ impl<T: Float> Network<T> {
     /// If no extra data is present, `E` can be set to `()`. If `with_state` is `true`, the
     /// network's recurrent state is loaded if it exists. If not loaded, it is initialized to all
     /// zeroes.
+    ///
+    /// The extra data returned will be [`Extra::Ok`] if it matches the requested type `E`, or
+    /// [`Extra::Other`] otherwise.
     #[cfg(all(feature = "serde", feature = "serde_json"))]
     pub fn load_file<E, P>(
         path: P,
         with_state: WithRecurrentState,
-    ) -> Result<(Self, CommonMetadata, E), encoding::Error>
+    ) -> Result<(Self, CommonMetadata, Extra<E>), encoding::Error>
     where
         T: DeserializeOwned,
         E: DeserializeOwned,
@@ -195,8 +201,8 @@ impl<T: Float> Network<T> {
     ///
     /// ```
     /// # use cge::Network;
-    /// # let (network, _, ()) =
-    /// #     Network::<f64>::load_file(format!(
+    /// # let (network, _, _) =
+    /// #     Network::<f64>::load_file::<(), _>(format!(
     /// #         "{}/test_data/test_network_v1.cge",
     /// #         env!("CARGO_MANIFEST_DIR")
     /// #     ), WithRecurrentState(true)).unwrap();
@@ -1113,7 +1119,7 @@ pub(crate) mod tests {
 
     #[test]
     fn test_save_load_recurrent_state() {
-        let (mut net, _, ()) = Network::<f64>::load_file(
+        let (mut net, _, _) = Network::<f64>::load_file::<(), _>(
             get_file_path("test_data", "test_network_recurrent.cge"),
             WithRecurrentState(false),
         )
@@ -1132,7 +1138,7 @@ pub(crate) mod tests {
 
     #[test]
     fn test_rebuild_metadata() {
-        let (net, _, ()) = Network::<f64>::load_file(
+        let (net, _, _) = Network::<f64>::load_file::<(), _>(
             get_file_path("test_data", "test_network_multi_output.cge"),
             WithRecurrentState(false),
         )
@@ -1171,7 +1177,7 @@ pub(crate) mod tests {
 
     #[test]
     fn test_clear_state() {
-        let (mut net, _, ()) = Network::<f64>::load_file(
+        let (mut net, _, _) = Network::<f64>::load_file::<(), _>(
             get_file_path("test_data", "test_network_recurrent.cge"),
             WithRecurrentState(false),
         )
@@ -1947,8 +1953,8 @@ pub(crate) mod tests {
         let string = network
             .to_string(Metadata::new(None), (), WithRecurrentState(true))
             .unwrap();
-        let (converted_network, _, ()) =
-            Network::<f64>::load_str(&string, WithRecurrentState(true)).unwrap();
+        let (converted_network, _, _) =
+            Network::<f64>::load_str::<()>(&string, WithRecurrentState(true)).unwrap();
 
         network.stack.clear();
         network.clear_state();

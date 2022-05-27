@@ -6,7 +6,7 @@ mod functions;
 pub mod v1;
 
 use num_traits::Float;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::Network;
 
@@ -51,7 +51,7 @@ impl<T: Float, E> PortableCGE<T, E> {
     pub fn build(
         self,
         with_state: WithRecurrentState,
-    ) -> Result<(Network<T>, CommonMetadata, E), Error> {
+    ) -> Result<(Network<T>, CommonMetadata, Extra<E>), Error> {
         match self {
             Self::V1(e) => e.build(with_state),
         }
@@ -115,12 +115,51 @@ pub trait EncodingVersion<T: Float, E>: Into<PortableCGE<T, E>> {
     fn build(
         self,
         with_state: WithRecurrentState,
-    ) -> Result<(Network<T>, CommonMetadata, E), Error>;
+    ) -> Result<(Network<T>, CommonMetadata, Extra<E>), Error>;
 }
 
 /// A trait implemented by all versioned metadata types.
 pub trait MetadataVersion<T: Float, E> {
     type Data: EncodingVersion<T, E, Metadata = Self>;
+}
+
+/// User-defined extra data to be serialized or deserialized alongside a [`Network`].
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Extra<E> {
+    /// The data deserialized into the requested type successfully.
+    Ok(E),
+    /// A different type than requested was encountered.
+    #[serde(deserialize_with = "deserialize_ignore_any")]
+    Other,
+}
+
+impl<E> Extra<E> {
+    /// Returns the contained data if it exists.
+    pub fn unwrap(self) -> E {
+        if let Self::Ok(data) = self {
+            data
+        } else {
+            panic!("called `unwrap` on an `Other` value");
+        }
+    }
+
+    /// Returns whether `self` is an `Ok` value.
+    pub fn is_ok(&self) -> bool {
+        matches!(self, Self::Ok(_))
+    }
+
+    /// Returns whether `self` is an `Other` value.
+    pub fn is_other(&self) -> bool {
+        matches!(self, Self::Other)
+    }
+}
+
+/// Deserializes any value into `T::default`.
+pub fn deserialize_ignore_any<'de, D: Deserializer<'de>, T: Default>(
+    deserializer: D,
+) -> Result<T, D::Error> {
+    serde::de::IgnoredAny::deserialize(deserializer).map(|_| T::default())
 }
 
 #[cfg(test)]
@@ -135,6 +174,28 @@ mod tests {
     }
 
     #[test]
+    fn test_extra() {
+        #[derive(Serialize, Deserialize)]
+        struct Foo {
+            x: i32,
+            y: [f64; 2],
+        }
+
+        let path = get_file_path("with_extra_data_v1.cge");
+        let (_, _, extra) =
+            Network::<f64>::load_file::<(), _>(&path, WithRecurrentState(false)).unwrap();
+
+        // The stored extra data is not `()`
+        assert!(extra.is_other());
+
+        let (_, _, extra2) =
+            Network::<f64>::load_file::<Foo, _>(&path, WithRecurrentState(false)).unwrap();
+
+        // The stored extra data is `Foo`
+        assert!(extra2.is_ok());
+    }
+
+    #[test]
     fn test_v1() {
         let mut loaded_string = String::new();
 
@@ -142,12 +203,19 @@ mod tests {
         file.read_to_string(&mut loaded_string).unwrap();
 
         // Load and save a network in the v1 format
-        let (network, metadata, extra) =
+        let (mut network, metadata, extra) =
             Network::<f64>::load_str::<()>(&loaded_string, WithRecurrentState(true)).unwrap();
-        let metadata = v1::Metadata::new(metadata.description);
+
+        let metadata = metadata.into_v1();
         let saved_string = network
             .to_string(metadata, extra, WithRecurrentState(true))
             .unwrap();
         assert_eq!(loaded_string.trim(), saved_string.trim());
+
+        // Check that recurrent state is loaded properly
+        let (mut network2, _, _) =
+            Network::<f64>::load_str::<()>(&loaded_string, WithRecurrentState(false)).unwrap();
+        let inputs = &[1.0, 1.0];
+        assert_ne!(network.evaluate(inputs), network2.evaluate(inputs));
     }
 }

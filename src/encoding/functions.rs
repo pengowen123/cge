@@ -8,7 +8,7 @@ use std::fs::{DirBuilder, File};
 use std::io::{BufReader, BufWriter, Write};
 use std::path::Path;
 
-use super::{CommonMetadata, Error, PortableCGE, WithRecurrentState};
+use super::{CommonMetadata, Error, Extra, PortableCGE, WithRecurrentState};
 use crate::network::Network;
 
 /// Loads encoded data of any version from a string. Also loads the network's recurrent state if
@@ -16,7 +16,7 @@ use crate::network::Network;
 pub(crate) fn load_str<'a, T, E>(
     s: &'a str,
     with_state: WithRecurrentState,
-) -> Result<(Network<T>, CommonMetadata, E), Error>
+) -> Result<(Network<T>, CommonMetadata, Extra<E>), Error>
 where
     T: Deserialize<'a> + Float,
     E: Deserialize<'a>,
@@ -31,7 +31,7 @@ where
 pub(crate) fn load_file<T, E, P>(
     path: P,
     with_state: WithRecurrentState,
-) -> Result<(Network<T>, CommonMetadata, E), Error>
+) -> Result<(Network<T>, CommonMetadata, Extra<E>), Error>
 where
     T: DeserializeOwned + Float,
     E: DeserializeOwned,

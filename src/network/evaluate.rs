@@ -138,7 +138,7 @@ mod tests {
 
     #[test]
     fn test_evaluate_full() {
-        let (mut net, _, ()) = Network::load_file(
+        let (mut net, _, _) = Network::load_file::<(), _>(
             get_file_path("test_network_v1.cge"),
             WithRecurrentState(false),
         )
@@ -155,7 +155,7 @@ mod tests {
 
     #[test]
     fn test_inputs() {
-        let (mut net, _, ()) = Network::load_file(
+        let (mut net, _, _) = Network::load_file::<(), _>(
             get_file_path("test_network_v1.cge"),
             WithRecurrentState(false),
         )
@@ -176,7 +176,7 @@ mod tests {
 
     #[test]
     fn test_activation() {
-        let (mut net, _, ()) = Network::load_file(
+        let (mut net, _, _) = Network::load_file::<(), _>(
             get_file_path("test_network_v1.cge"),
             WithRecurrentState(false),
         )
@@ -196,7 +196,7 @@ mod tests {
 
     #[test]
     fn test_multiple_outputs() {
-        let (mut net, _, ()) = Network::load_file(
+        let (mut net, _, _) = Network::load_file::<(), _>(
             get_file_path("test_network_multi_output.cge"),
             WithRecurrentState(false),
         )
@@ -219,7 +219,7 @@ mod tests {
 
     #[test]
     fn test_forward_jumper_cached() {
-        let (mut net, _, ()) = Network::load_file(
+        let (mut net, _, _) = Network::load_file::<(), _>(
             get_file_path("test_network_v1.cge"),
             WithRecurrentState(false),
         )
@@ -243,7 +243,7 @@ mod tests {
 
     #[test]
     fn test_recurrent_previous_value() {
-        let (mut net, _, ()) = Network::<f64>::load_file(
+        let (mut net, _, _) = Network::<f64>::load_file::<(), _>(
             get_file_path("test_network_recurrent.cge"),
             WithRecurrentState(false),
         )
