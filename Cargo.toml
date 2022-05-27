@@ -5,7 +5,7 @@ authors = [
     "pengowen123 <pengowen816@gmail.com>",
     "MathisWellmann <wellmannmathis@gmail.com>",
 ]
-edition = "2021"
+edition = "2018"
 description = "An implementation of the Common Genetic Encoding (CGE) for neural networks."
 readme = "README.md"
 license = "GPL-3.0"

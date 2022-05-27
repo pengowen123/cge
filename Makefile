@@ -3,5 +3,5 @@ init:
 
 run-examples:
 	for eg in `ls ./examples/*.rs | xargs basename --suffix=.rs`; do \
-		cargo run --release --example $$eg; \
+		cargo run --example $$eg; \
 	done

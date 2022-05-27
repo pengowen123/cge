@@ -15,6 +15,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use std::collections::{HashMap, HashSet};
+use std::convert::TryFrom;
 use std::iter;
 use std::ops::{Index, Range};
 #[cfg(all(feature = "serde", feature = "serde_json"))]
@@ -621,7 +622,7 @@ impl<T: Float> Network<T> {
     pub fn recurrent_state(&self) -> impl Iterator<Item = T> + '_ {
         self.recurrent_state_ids
             .iter()
-            .map(|id| self.get_neuron(*id).unwrap().previous_value())
+            .map(move |id| self.get_neuron(*id).unwrap().previous_value())
     }
 
     /// Maps `f` over the recurrent state of the [`Network`], which are the values stored for use by
@@ -656,9 +657,10 @@ impl<T: Float> Network<T> {
     ) -> Result<(), IndexOutOfBoundsError> {
         self.recurrent_state_ids
             .get(index)
+            .cloned()
             .map(|id| {
                 let source =
-                    utils::get_mut_neuron(*id, &self.neuron_info, &mut self.genome).unwrap();
+                    utils::get_mut_neuron(id, &self.neuron_info, &mut self.genome).unwrap();
                 *source.mut_previous_value() = value;
             })
             .ok_or(IndexOutOfBoundsError)
@@ -1068,7 +1070,7 @@ impl<T: Float> Network<T> {
             .iter()
             .zip(&self.gene_parents)
             .enumerate()
-            .filter_map(|(i, (gene, parent))| {
+            .filter_map(move |(i, (gene, parent))| {
                 // Neurons can't be removed
                 if gene.is_neuron() {
                     None
@@ -1269,15 +1271,12 @@ pub(crate) mod tests {
         )
         .unwrap();
 
-        let expected_neuron_info: HashMap<_, _> = [
-            (NeuronId::new(0), NeuronInfo::new(0..5, 0)),
-            (NeuronId::new(1), NeuronInfo::new(1..4, 1)),
-            (NeuronId::new(2), NeuronInfo::new(5..9, 0)),
-            (NeuronId::new(3), NeuronInfo::new(9..14, 0)),
-            (NeuronId::new(4), NeuronInfo::new(11..14, 1)),
-        ]
-        .into_iter()
-        .collect();
+        let mut expected_neuron_info = HashMap::new();
+        expected_neuron_info.insert(NeuronId::new(0), NeuronInfo::new(0..5, 0));
+        expected_neuron_info.insert(NeuronId::new(1), NeuronInfo::new(1..4, 1));
+        expected_neuron_info.insert(NeuronId::new(2), NeuronInfo::new(5..9, 0));
+        expected_neuron_info.insert(NeuronId::new(3), NeuronInfo::new(9..14, 0));
+        expected_neuron_info.insert(NeuronId::new(4), NeuronInfo::new(11..14, 1));
         assert_eq!(expected_neuron_info, net.neuron_info);
 
         let expected_parents = vec![
