@@ -38,6 +38,7 @@ use evaluate::Inputs;
 /// # use cge::Network;
 /// # let network: Network<f64> = unimplemented!();
 /// use cge::gene::NeuronId;
+///
 /// let id = NeuronId::new(0);
 /// let index = network
 ///     .neuron_info(id)
@@ -531,7 +532,7 @@ impl<T: Float> Network<T> {
     }
 
     /// Evaluates the network on the given inputs. Repeated calls to this method may not return
-    /// identical returns for the same inputs because networks may store internal state (see
+    /// identical values for the same inputs because networks may store internal state (see
     /// [`recurrent_state`][Self::recurrent_state] and related methods). This state can be cleared
     /// with [`clear_state`][Self::clear_state] as needed.
     ///
@@ -586,6 +587,24 @@ impl<T: Float> Network<T> {
     ///
     /// This state is only used by [`RecurrentJumper`] connections, so calling this method is
     /// unnecessary if the network does not contain them.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use cge::Network;
+    /// # let mut network: Network<f64> = unimplemented!();
+    /// let inputs = [1.0, 2.0, 3.0];
+    /// let output_1 = network.evaluate(&inputs).unwrap().to_vec();
+    /// let output_2 = network.evaluate(&inputs).unwrap().to_vec();
+    /// // Recurrent state may cause these two outputs to differ
+    /// assert_ne!(output_1, output_2);
+    ///
+    /// // But clearing the state fully resets the network and causes it to return its original
+    /// // output
+    /// network.clear_state();
+    /// let output_3 = network.evaluate(&inputs).unwrap().to_vec();
+    /// assert_eq!(output_1, output_3);
+    /// ```
     pub fn clear_state(&mut self) {
         for gene in &mut self.genome {
             if let Gene::Neuron(neuron) = gene {
@@ -619,6 +638,17 @@ impl<T: Float> Network<T> {
 
     /// Returns an iterator over the recurrent state of the [`Network`], which are the values
     /// stored for use by [`RecurrentJumper`] genes.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use cge::Network;
+    /// # let mut network: Network<f64> = unimplemented!();
+    /// let _ = network.evaluate(&[1.0, 2.0]).unwrap();
+    /// let state = network.recurrent_state().collect::<Vec<_>>();
+    /// // Print the network's recurrent state after one evaluation
+    /// println!("{:?}", state);
+    /// ```
     pub fn recurrent_state(&self) -> impl Iterator<Item = T> + '_ {
         self.recurrent_state_ids
             .iter()
@@ -628,6 +658,15 @@ impl<T: Float> Network<T> {
     /// Maps `f` over the recurrent state of the [`Network`], which are the values stored for use by
     /// [`RecurrentJumper`] genes. The first argument to `f` is the index of the state value being
     /// accessed.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use cge::Network;
+    /// # let mut network: Network<f64> = unimplemented!();
+    /// // Equivalent to calling `clear_state`
+    /// network.map_recurrent_state(|_, val| *val = 0.0);
+    /// ```
     pub fn map_recurrent_state<F: FnMut(usize, &mut T)>(&mut self, mut f: F) {
         for (i, id) in self.recurrent_state_ids.iter().enumerate() {
             let source = utils::get_mut_neuron(*id, &self.neuron_info, &mut self.genome).unwrap();
@@ -636,8 +675,28 @@ impl<T: Float> Network<T> {
     }
 
     /// Sets the recurrent state of the [`Network`], which are the values stored for use by
-    /// [`RecurrentJumper`] genes. Returns `Err` if the length of `state` does not equal the number
-    /// of recurrent state values stored by the [`Network`].
+    /// [`RecurrentJumper`] genes. Can be used to restore a state saved previously with
+    /// [`recurrent_state`][Self::map_recurrent_state]. Returns `Err` if the length of `state` does
+    /// not equal the number of recurrent state values stored by the [`Network`] (see
+    /// [`recurrent_state_len`][Self::recurrent_state_len]).
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use cge::Network;
+    /// # let mut network: Network<f64> = unimplemented!();
+    /// // Save the network's state for later
+    /// let state = network.recurrent_state().collect::<Vec<_>>();
+    /// let inputs = [1.0, 2.0];
+    /// let output_1 = network.evaluate(&inputs).unwrap().to_vec();
+    ///
+    /// // ...many evaluations later
+    ///
+    /// // Restore the earlier state
+    /// network.set_recurrent_state(&state).unwrap();
+    /// let output_2 = network.evaluate(&inputs).unwrap().to_vec();
+    /// assert_eq!(output_1, output_2);
+    /// ```
     pub fn set_recurrent_state(&mut self, state: &[T]) -> Result<(), MismatchedLengthsError> {
         if state.len() != self.recurrent_state_ids.len() {
             Err(MismatchedLengthsError)
@@ -649,7 +708,7 @@ impl<T: Float> Network<T> {
 
     /// Sets a particular recurrent state value to `value`. The recurrent state consists of the
     /// values stored for use by [`RecurrentJumper`] genes. Returns `Err` if the index is out of
-    /// bounds.
+    /// bounds (see [`recurrent_state_len`][Self::recurrent_state_len]).
     pub fn set_recurrent_state_at(
         &mut self,
         index: usize,
@@ -675,6 +734,12 @@ impl<T: Float> Network<T> {
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.genome.len()
+    }
+
+    /// Returns the [`Gene`] at the index if it exists. Note that a [`Gene`] can also be accessed
+    /// by indexing the `Network` directly.
+    pub fn get(&self, index: usize) -> Option<&Gene<T>> {
+        self.genome.get(index)
     }
 
     /// Returns the activation function of this `Network`.
@@ -727,7 +792,8 @@ impl<T: Float> Network<T> {
     }
 
     /// Returns the [`NeuronInfo`] corresponding to the [`Neuron`] with the given ID if the neuron
-    /// exists.
+    /// exists. Note that a `NeuronInfo` can also be accessed by indexing the `Network` with its
+    /// [`NeuronId`] directly.
     pub fn neuron_info(&self, id: NeuronId) -> Option<&NeuronInfo> {
         self.neuron_info.get(&id)
     }
@@ -785,6 +851,18 @@ impl<T: Float> Network<T> {
     /// Adds a [`NonNeuronGene`] as an input to a `parent` [`Neuron`].
     /// [`clear_state`][Self::clear_state] is automatically called to clear the recurrent state of
     /// the `Network`.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use cge::Network;
+    /// # let mut network: Network<f64> = unimplemented!();
+    /// use cge::gene::*;
+    ///
+    /// // Add a connection from input ID 1 to neuron ID 2 with a weight of 0.5
+    /// let new_gene = Input::new(InputId::new(1), 0.5);
+    /// network.add_non_neuron(NeuronId::new(2), new_gene).unwrap();
+    /// ```
     pub fn add_non_neuron<G: Into<NonNeuronGene<T>>>(
         &mut self,
         parent: NeuronId,
@@ -793,7 +871,8 @@ impl<T: Float> Network<T> {
         self.add_genes(parent, None, vec![gene.into()]).map(|_| ())
     }
 
-    /// Adds a sequence of [`NonNeuronGene`]s as inputs to a `parent` [`Neuron`].
+    /// Like [`add_non_neuron`][Self::add_non_neuron], but adds multiple [`NonNeuronGene`]s instead.
+    /// This is more performant when adding multiple genes to the same parent [`Neuron`].
     /// [`clear_state`][Self::clear_state] is automatically called to clear the recurrent state of
     /// the `Network`.
     pub fn add_non_neurons(
@@ -811,6 +890,23 @@ impl<T: Float> Network<T> {
     /// The new neuron will have the ID given by [`next_neuron_id`][Self::next_neuron_id].
     /// [`RecurrentJumper`] connections sourcing from the new neuron may be included in `inputs` by
     /// pointing them to this ID.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use cge::Network;
+    /// # let mut network: Network<f64> = unimplemented!();
+    /// use cge::gene::*;
+    ///
+    /// // Add a subnetwork with two input connections and a weight of `0.6` as an input to neuron
+    /// // ID 2
+    /// // One of the connections is a recurrent jumper connection to the new subnetwork itself
+    /// let inputs = vec![
+    ///     Input::new(InputId::new(0), 0.8).into(),
+    ///     RecurrentJumper::new(network.next_neuron_id(), 0.3).into(),
+    /// ];
+    /// network.add_subnetwork(NeuronId::new(2), 0.6, inputs).unwrap();
+    /// ```
     pub fn add_subnetwork(
         &mut self,
         parent: NeuronId,
@@ -1081,6 +1177,17 @@ impl<T: Float> Network<T> {
 
     /// Returns an iterator of indices of genes that are valid to remove with
     /// [`remove_non_neuron`][Self::remove_non_neuron].
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use cge::Network;
+    /// # let mut network: Network<f64> = unimplemented!();
+    /// if let Some(index) = network.get_valid_removals().next() {
+    ///     // This removal is guaranteed to be valid
+    ///     network.remove_non_neuron(index).unwrap();
+    /// }
+    /// ```
     pub fn get_valid_removals(&self) -> impl Iterator<Item = usize> + '_ {
         self.genome
             .iter()
@@ -1106,6 +1213,23 @@ impl<T: Float> Network<T> {
     /// Returns an iterator of [`NeuronId`]s with depths greater than `parent_depth`, which can be
     /// used as sources for a [`ForwardJumper`] gene under a parent [`Neuron`] with depth
     /// `parent_depth`.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use cge::Network;
+    /// # let mut network: Network<f64> = unimplemented!();
+    /// use cge::gene::*;
+    ///
+    /// let parent = NeuronId::new(3);
+    /// let parent_depth = network[parent].depth();
+    ///
+    /// if let Some(id) = network.get_valid_forward_jumper_sources(parent_depth).next() {
+    ///     // This forward jumper connection is guaranteed to be valid
+    ///     let new_gene = ForwardJumper::new(id, 1.0);
+    ///     network.add_non_neuron(parent, new_gene).unwrap();
+    /// }
+    /// ```
     pub fn get_valid_forward_jumper_sources(
         &self,
         parent_depth: usize,
