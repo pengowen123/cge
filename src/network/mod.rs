@@ -9,23 +9,23 @@ pub use error::{
 };
 
 use num_traits::Float;
-#[cfg(all(feature = "serde", feature = "serde_json"))]
+#[cfg(all(feature = "serde", feature = "json"))]
 use serde::de::DeserializeOwned;
-#[cfg(all(feature = "serde", feature = "serde_json"))]
+#[cfg(all(feature = "serde", feature = "json"))]
 use serde::{Deserialize, Serialize};
 
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::iter;
 use std::ops::{Index, Range};
-#[cfg(all(feature = "serde", feature = "serde_json"))]
+#[cfg(all(feature = "serde", feature = "json"))]
 use std::path::Path;
 
 use crate::activation::Activation;
-#[cfg(all(feature = "serde", feature = "serde_json"))]
-use crate::encoding::{self, CommonMetadata};
+#[cfg(all(feature = "serde", feature = "json"))]
+use crate::encoding::{self, CommonMetadata, Extra};
 #[cfg(feature = "serde")]
-use crate::encoding::{EncodingVersion, Extra, MetadataVersion, PortableCGE, WithRecurrentState};
+use crate::encoding::{EncodingVersion, MetadataVersion, PortableCGE, WithRecurrentState};
 use crate::gene::*;
 use crate::stack::Stack;
 use evaluate::Inputs;
@@ -209,7 +209,7 @@ impl<T: Float> Network<T> {
     /// [`Extra::Other`] otherwise.
     ///
     /// This method only works with JSON data. For other formats, see [`PortableCGE`].
-    #[cfg(all(feature = "serde", feature = "serde_json"))]
+    #[cfg(all(feature = "serde", feature = "json"))]
     pub fn load_str<'a, E>(
         s: &'a str,
         with_state: WithRecurrentState,
@@ -230,7 +230,7 @@ impl<T: Float> Network<T> {
     /// [`Extra::Other`] otherwise.
     ///
     /// This method only works with JSON data. For other formats, see [`PortableCGE`].
-    #[cfg(all(feature = "serde", feature = "serde_json"))]
+    #[cfg(all(feature = "serde", feature = "json"))]
     pub fn load_file<E, P>(
         path: P,
         with_state: WithRecurrentState,
@@ -252,7 +252,7 @@ impl<T: Float> Network<T> {
     ///
     /// This method encodes the data as JSON. To use other formats, see
     /// [`to_serializable`][Self::to_serializable] and [`PortableCGE`].
-    #[cfg(all(feature = "serde", feature = "serde_json"))]
+    #[cfg(all(feature = "serde", feature = "json"))]
     pub fn to_string<E, M>(
         &self,
         metadata: M,
@@ -278,7 +278,7 @@ impl<T: Float> Network<T> {
     ///
     /// This method encodes the data as JSON. To use other formats, see
     /// [`to_serializable`][Self::to_serializable] and [`PortableCGE`].
-    #[cfg(all(feature = "serde", feature = "serde_json"))]
+    #[cfg(all(feature = "serde", feature = "json"))]
     pub fn to_file<E, M, P>(
         &self,
         metadata: M,
@@ -1371,10 +1371,13 @@ pub(crate) mod tests {
 
         assert!(net.set_weights(&[]).is_err());
         assert!(net.set_weights(&[1.0, 2.0, 3.0, 4.0]).is_err());
-        assert_eq!(&[1.0; 3][..], net.weights().collect::<Vec<_>>());
+        assert_eq!(&[1.0; 3][..], net.weights().collect::<Vec<_>>().as_slice());
 
         net.set_weights(&[5.0, 6.0, 7.0]).unwrap();
-        assert_eq!(&[5.0, 6.0, 7.0][..], net.weights().collect::<Vec<_>>());
+        assert_eq!(
+            &[5.0, 6.0, 7.0][..],
+            net.weights().collect::<Vec<_>>().as_slice()
+        );
 
         // The recurrent state should be cleared after any weight changes
         check_state_is_cleared(&net);
@@ -1408,14 +1411,23 @@ pub(crate) mod tests {
 
         // Only two unique neurons are referred to by recurrent jumpers
         assert_eq!(2, net.recurrent_state_len());
-        assert_eq!(&[0.0, 0.0][..], &net.recurrent_state().collect::<Vec<_>>());
+        assert_eq!(
+            &[0.0, 0.0][..],
+            net.recurrent_state().collect::<Vec<_>>().as_slice()
+        );
 
         assert!(net.set_recurrent_state(&[]).is_err());
         assert!(net.set_recurrent_state(&[1.0, 2.0, 3.0]).is_err());
-        assert_eq!(&[0.0, 0.0][..], &net.recurrent_state().collect::<Vec<_>>());
+        assert_eq!(
+            &[0.0, 0.0][..],
+            net.recurrent_state().collect::<Vec<_>>().as_slice()
+        );
 
         net.set_recurrent_state(&[2.0, 3.0]).unwrap();
-        assert_eq!(&[2.0, 3.0][..], &net.recurrent_state().collect::<Vec<_>>());
+        assert_eq!(
+            &[2.0, 3.0][..],
+            net.recurrent_state().collect::<Vec<_>>().as_slice()
+        );
         assert_eq!(2.0, net[0].as_neuron().unwrap().previous_value());
         assert_eq!(3.0, net[3].as_neuron().unwrap().previous_value());
 
@@ -1592,7 +1604,7 @@ pub(crate) mod tests {
 
     #[test]
     fn test_validate_non_neuron_output() {
-        for gene in [bias(), input(0), forward(1), recurrent(1)] {
+        for gene in vec![bias(), input(0), forward(1), recurrent(1)] {
             let genome = vec![gene];
             assert_eq!(
                 Network::new(genome, Activation::Linear).unwrap_err(),
@@ -1706,7 +1718,7 @@ pub(crate) mod tests {
     #[test]
     fn test_mutate_invalid_jumper_source() {
         let new_genes: [NonNeuronGene<_>; 2] = [forward(1), recurrent(1)];
-        for new_gene in new_genes {
+        for new_gene in &new_genes {
             run_invalid_mutation_test(
                 vec![neuron(0, 1), input(0)],
                 |net| net.add_non_neuron(NeuronId::new(0), new_gene.clone()),
@@ -2098,7 +2110,10 @@ pub(crate) mod tests {
         ];
         let mut net = Network::new(genome, Activation::Linear).unwrap();
 
-        assert_eq!(&[1, 4, 7][..], net.get_valid_removals().collect::<Vec<_>>());
+        assert_eq!(
+            &[1, 4, 7][..],
+            net.get_valid_removals().collect::<Vec<_>>().as_slice()
+        );
 
         // Check that each index actually represents a valid removal
         loop {
@@ -2135,8 +2150,8 @@ pub(crate) mod tests {
             .get_valid_forward_jumper_sources(parent_depth)
             .collect::<Vec<_>>();
 
-        for id in [NeuronId::new(3), NeuronId::new(4), NeuronId::new(5)] {
-            assert!(valid_sources.contains(&id));
+        for id in &[NeuronId::new(3), NeuronId::new(4), NeuronId::new(5)] {
+            assert!(valid_sources.contains(id));
         }
         assert_eq!(3, valid_sources.len());
 

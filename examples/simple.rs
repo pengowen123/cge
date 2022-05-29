@@ -1,4 +1,4 @@
-//! An example of loading, using, and saving a network. Requires the `serde_json` feature.
+//! An example of loading, using, and saving a network. Requires the `json` feature.
 
 use cge::gene::{Bias, NeuronId};
 use cge::{Network, WithRecurrentState};

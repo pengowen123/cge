@@ -1,6 +1,6 @@
 //! Error types related to the portable encoding.
 
-#[cfg(feature = "serde_json")]
+#[cfg(feature = "json")]
 use serde_json;
 
 use std::{error, fmt, io};
@@ -11,7 +11,7 @@ use crate::network;
 #[derive(Debug)]
 pub enum Error {
     /// An error during serialization or deserialization.
-    #[cfg(feature = "serde_json")]
+    #[cfg(feature = "json")]
     Serde(serde_json::Error),
     /// An error while reading from/writing to a file.
     Io(io::Error),
@@ -24,7 +24,7 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            #[cfg(feature = "serde_json")]
+            #[cfg(feature = "json")]
             Self::Serde(e) => write!(f, "de/serialization error: {}", e),
             Self::Io(e) => write!(f, "io error: {}", e),
             Self::CGE(e) => write!(f, "network error: {}", e),
@@ -36,7 +36,7 @@ impl fmt::Display for Error {
 impl error::Error for Error {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            #[cfg(feature = "serde_json")]
+            #[cfg(feature = "json")]
             Self::Serde(e) => Some(e),
             Self::Io(e) => Some(e),
             Self::CGE(e) => Some(e),
@@ -45,7 +45,7 @@ impl error::Error for Error {
     }
 }
 
-#[cfg(feature = "serde_json")]
+#[cfg(feature = "json")]
 impl From<serde_json::Error> for Error {
     fn from(e: serde_json::Error) -> Self {
         Self::Serde(e)

@@ -6,6 +6,8 @@
 A Rust library for creating, using, and modifying artificial neural networks using the [Common Genetic Encoding
 (CGE)][0]. See [`const_cge`][1] for a similar library geared towards embedded environments and performance-critical use cases. For the creation of CGE-compatible neural networks, see the [`eant2`][2] library.
 
+Requires Rust 1.43 or later.
+
 ## Features
 
 `cge` is intended to be a complete solution for interacting with CGE neural networks in the direct encoding case only. It currently provides these features:

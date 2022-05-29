@@ -6,15 +6,17 @@ authors = [
     "MathisWellmann <wellmannmathis@gmail.com>",
 ]
 edition = "2018"
-description = "An implementation of the Common Genetic Encoding (CGE) for neural networks."
+rust-version = "1.43"
+description = "An implementation of the Common Genetic Encoding (CGE) for directly-encoded neural networks."
 readme = "README.md"
 license = "GPL-3.0"
 documentation = "https://docs.rs/cge"
 repository = "https://github.com/pengowen123/cge"
 
 [features]
-default = ["serde", "serde_json"]
-serde_json = ["serde_json/default", "serde"]
+default = ["serde", "json"]
+# Support for de/serialization from/to JSON
+json = ["serde", "serde_json"]
 
 [dependencies]
 num-traits = "0.2.15"

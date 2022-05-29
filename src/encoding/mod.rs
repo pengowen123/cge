@@ -1,7 +1,7 @@
 //! A portable encoding for `cge` [`Network`]s. See [`PortableCGE`].
 
 mod error;
-#[cfg(feature = "serde_json")]
+#[cfg(feature = "json")]
 mod functions;
 pub mod v1;
 
@@ -11,7 +11,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use crate::Network;
 
 pub use error::Error;
-#[cfg(feature = "serde_json")]
+#[cfg(feature = "json")]
 pub(crate) use functions::*;
 
 /// The latest metadata version.
@@ -125,7 +125,7 @@ pub trait EncodingVersion<T: Float, E>: Into<PortableCGE<T, E>> {
 }
 
 /// A trait implemented by all versioned metadata types.
-pub trait MetadataVersion<T: Float, E> {
+pub trait MetadataVersion<T: Float, E>: Into<CommonMetadata> + Sized {
     /// The data type corresponding to this metadata's encoding version.
     type Data: EncodingVersion<T, E, Metadata = Self>;
 }
