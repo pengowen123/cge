@@ -10,10 +10,11 @@
 //! ```no_run
 //! use cge::{Network, WithRecurrentState};
 //!
+//! // `extra` is any user-defined data stored alongside the network
 //! let (mut network, metadata, extra) =
 //!     Network::<f64>::load_file::<(), _>("network.cge", WithRecurrentState(true)).unwrap();
 //!
-//! println!("metadata: {:?}", metadata);
+//! println!("description: {:?}", metadata.description);
 //! println!("num inputs, outputs: {}, {}", network.num_inputs(), network.num_outputs());
 //! println!("{:?}", network.evaluate(&[1.0, 2.0]).unwrap());
 //!

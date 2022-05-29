@@ -1,6 +1,6 @@
 # cge
 
-[![Crates.io](https://img.shields.io/crates/v/cmaes)](https://crates.io/crates/cmaes)
+[![Crates.io](https://img.shields.io/crates/v/cge)](https://crates.io/crates/cge)
 [![Rust](https://github.com/pengowen123/cge/actions/workflows/rust.yml/badge.svg?branch=master)](https://github.com/pengowen123/cge/actions/workflows/rust.yml)
 
 A Rust library for creating, using, and modifying artificial neural networks using the [Common Genetic Encoding
@@ -31,10 +31,11 @@ Then, to load and use an existing neural network from a file:
 ```rust
 use cge::{Network, WithRecurrentState};
 
+// `extra` is any user-defined data stored alongside the network
 let (mut network, metadata, extra) =
     Network::<f64>::load_file::<(), _>("network.cge", WithRecurrentState(true)).unwrap();
 
-println!("metadata: {:?}", metadata);
+println!("description: {:?}", metadata.description);
 println!("num inputs, outputs: {}, {}", network.num_inputs(), network.num_outputs());
 println!("{:?}", network.evaluate(&[1.0, 2.0]).unwrap());
 
@@ -47,7 +48,7 @@ For more information, see the [documentation][3] and [examples][4].
 
 ## Contributing
 
-Contributions are welcome! You can contribute by reporting any bugs or issues you have with the library, adding documentation, or changing or adding code.
+Contributions are welcome! You can contribute by reporting any bugs or issues you have with the library, adding documentation, fixing bugs, or adding features.
 
 Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in the work by you, as defined in the Apache-2.0 license, shall be dual licensed as below, without any additional terms or conditions.
 
