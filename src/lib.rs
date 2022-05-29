@@ -1,6 +1,7 @@
 //! A library for creating, using, and modifying artificial neural networks using the [Common
-//! Genetic Encoding (CGE)][1]. See [`const_cge`][0] for a similar library geared towards embedded
-//! environments and performance-critical use cases.
+//! Genetic Encoding (CGE)][0]. See [`const_cge`][1] for a similar library geared towards embedded
+//! environments and performance-critical use cases. For the creation of CGE-compatible neural
+//! networks, see the [`eant2`][2] library.
 //!
 //! # Quick Start
 //!
@@ -23,8 +24,9 @@
 //!
 //! See [`Network`] for full documentation.
 //!
-//! [0]: https://github.com/wbrickner/const_cge
-//! [1]: https://dl.acm.org/doi/10.1145/1276958.1277162
+//! [0]: https://dl.acm.org/doi/10.1145/1276958.1277162
+//! [1]: https://github.com/wbrickner/const_cge
+//! [2]: https://github.com/pengowen123/eant2
 
 pub mod activation;
 #[cfg(feature = "serde")]
