@@ -760,12 +760,15 @@ impl<T: Float> Network<T> {
         self.genome.iter().map(Gene::weight)
     }
 
-    /// Returns a mutable iterator over the gene weights.
+    /// Returns a mutable iterator over the gene weights. [`clear_state`][Self::clear_state] is
+    /// automatically called to clear the recurrent state of the `Network`.
     pub fn mut_weights(&mut self) -> impl Iterator<Item = &mut T> {
+        self.clear_state();
         self.genome.iter_mut().map(Gene::mut_weight)
     }
 
-    /// Sets the gene weights to the provided values. Returns `Err` if
+    /// Sets the gene weights to the provided values. [`clear_state`][Self::clear_state] is
+    /// automatically called to clear the recurrent state of the `Network`. Returns `Err` if
     /// `weights.len() != self.len()`.
     pub fn set_weights(&mut self, weights: &[T]) -> Result<(), MismatchedLengthsError> {
         if weights.len() != self.len() {
@@ -780,6 +783,8 @@ impl<T: Float> Network<T> {
     }
 
     /// Adds a [`NonNeuronGene`] as an input to a `parent` [`Neuron`].
+    /// [`clear_state`][Self::clear_state] is automatically called to clear the recurrent state of
+    /// the `Network`.
     pub fn add_non_neuron<G: Into<NonNeuronGene<T>>>(
         &mut self,
         parent: NeuronId,
@@ -789,6 +794,8 @@ impl<T: Float> Network<T> {
     }
 
     /// Adds a sequence of [`NonNeuronGene`]s as inputs to a `parent` [`Neuron`].
+    /// [`clear_state`][Self::clear_state] is automatically called to clear the recurrent state of
+    /// the `Network`.
     pub fn add_non_neurons(
         &mut self,
         parent: NeuronId,
@@ -798,7 +805,8 @@ impl<T: Float> Network<T> {
     }
 
     /// Adds a subnetwork (a [`Neuron`] gene with its inputs) as an input to a `parent` neuron.
-    /// Returns the ID of the new subnetwork's neuron.
+    /// Returns the ID of the new subnetwork's neuron. [`clear_state`][Self::clear_state] is
+    /// automatically called to clear the recurrent state of the `Network`.
     ///
     /// The new neuron will have the ID given by [`next_neuron_id`][Self::next_neuron_id].
     /// [`RecurrentJumper`] connections sourcing from the new neuron may be included in `inputs` by
@@ -815,7 +823,7 @@ impl<T: Float> Network<T> {
 
     /// Adds a sequence of genes immediately following the `parent` [`Neuron`]. Adds the genes as
     /// inputs to a new subnetwork if `subnetwork_weight` is `Some`. Checks that each gene is valid
-    /// and updates any relevant network metadata.
+    /// and updates any relevant network metadata. Calls `clear_state`.
     ///
     /// Returns the ID of the new subnetwork if added.
     fn add_genes(
@@ -998,11 +1006,15 @@ impl<T: Float> Network<T> {
         self.num_inputs = new_num_inputs;
         self.next_neuron_id = new_next_neuron_id;
 
+        // Clear the recurrent state
+        self.clear_state();
+
         Ok(new_neuron_id)
     }
 
     /// Removes and returns the non-[`Neuron`] gene at the index if it is not the only input to its
-    /// parent neuron.
+    /// parent neuron. [`clear_state`][Self::clear_state] is automatically called to clear the
+    /// recurrent state of the `Network`.
     pub fn remove_non_neuron(&mut self, index: usize) -> Result<Gene<T>, MutationError> {
         // O(n)
         if let Some(removed_gene) = self.genome.get(index) {
@@ -1048,6 +1060,9 @@ impl<T: Float> Network<T> {
             self.num_inputs = new_max_input_id
                 .map(|id| id.checked_add(1).unwrap())
                 .unwrap_or(0);
+
+            // Clear the recurrent state
+            self.clear_state();
 
             // Remove the gene
             self.gene_parents.remove(index);
@@ -1162,6 +1177,7 @@ pub(crate) mod tests {
         RecurrentJumper::new(NeuronId::new(source_id), 1.0).into()
     }
 
+    /// Checks that `network.num_outputs` is correct
     fn check_num_outputs(network: &Network<f64>) {
         assert_eq!(
             network.num_outputs(),
@@ -1171,6 +1187,13 @@ pub(crate) mod tests {
                 .filter(|(_, info)| info.depth == 0)
                 .count()
         );
+    }
+
+    /// Checks that the recurrent state of the network is cleared
+    fn check_state_is_cleared(network: &Network<f64>) {
+        for g in network.genome().iter().filter(|g| g.is_neuron()) {
+            assert_eq!(0.0, g.as_neuron().unwrap().previous_value());
+        }
     }
 
     #[test]
@@ -1205,12 +1228,30 @@ pub(crate) mod tests {
         let genome = vec![neuron(0, 2), bias(), input(0)];
         let mut net = Network::new(genome, Activation::Linear).unwrap();
 
+        let _ = net.evaluate(&[1.0; 1]);
+
         assert!(net.set_weights(&[]).is_err());
         assert!(net.set_weights(&[1.0, 2.0, 3.0, 4.0]).is_err());
         assert_eq!(&[1.0; 3][..], net.weights().collect::<Vec<_>>());
 
         net.set_weights(&[5.0, 6.0, 7.0]).unwrap();
         assert_eq!(&[5.0, 6.0, 7.0][..], net.weights().collect::<Vec<_>>());
+
+        // The recurrent state should be cleared after any weight changes
+        check_state_is_cleared(&net);
+    }
+
+    #[test]
+    fn test_mut_weights() {
+        // The recurrent state should be cleared after any weight changes
+        let genome = vec![neuron(0, 2), bias(), input(0)];
+        let mut net = Network::new(genome, Activation::Linear).unwrap();
+
+        let _ = net.evaluate(&[1.0; 1]);
+
+        for _ in net.mut_weights() {}
+
+        check_state_is_cleared(&net);
     }
 
     #[test]
@@ -1682,7 +1723,12 @@ pub(crate) mod tests {
         let mut network = Network::new(start_genome, Activation::Linear).unwrap();
         let old_num_outputs = network.num_outputs();
 
+        let _ = network.evaluate(&[1.0; 10]).unwrap().to_vec();
+
         let _ = mutate(&mut network);
+
+        // The recurrent state should be cleared after any mutation
+        check_state_is_cleared(&network);
 
         assert_eq!(end_genome, network.genome());
         assert_eq!(expected_num_inputs, network.num_inputs());
