@@ -747,8 +747,10 @@ impl<T: Float> Network<T> {
         self.activation
     }
 
-    /// Sets the activation function of this `Network`.
+    /// Sets the activation function of this `Network`. [`clear_state`][Self::clear_state] is
+    /// automatically called to clear the recurrent state of the `Network`.
     pub fn set_activation(&mut self, new: Activation) {
+        self.clear_state();
         self.activation = new;
     }
 
@@ -1345,6 +1347,19 @@ pub(crate) mod tests {
         assert_eq!(2, net4.num_inputs());
         assert_eq!(2, net4.num_outputs());
         check_num_outputs(&net4);
+    }
+
+    #[test]
+    fn test_set_activation() {
+        let genome = vec![neuron(0, 2), bias(), input(0)];
+        let mut net = Network::new(genome, Activation::Linear).unwrap();
+
+        let _ = net.evaluate(&[1.0; 1]);
+
+        net.set_activation(Activation::Relu);
+
+        // The recurrent state should be cleared after any activation function changes
+        check_state_is_cleared(&net);
     }
 
     #[test]
