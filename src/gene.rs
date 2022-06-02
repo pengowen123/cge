@@ -31,7 +31,7 @@ impl<T: Float> Bias<T> {
 }
 
 /// The ID of a [`Network`][crate::Network]'s [`Input`].
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct InputId(usize);
 
