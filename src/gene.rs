@@ -168,7 +168,10 @@ impl<T: Float> Neuron<T> {
         self.current_value = value;
     }
 
-    pub(crate) fn previous_value(&self) -> T {
+    /// Returns the output value of this `Neuron` from the previous [`Network`][crate::Network]
+    /// evaluation, or zero if either no evaluation has occurred yet or
+    /// [`Network::clear_state`][crate::Network::clear_state] was called.
+    pub fn previous_value(&self) -> T {
         self.previous_value
     }
 

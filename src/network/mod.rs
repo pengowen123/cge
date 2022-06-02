@@ -655,6 +655,12 @@ impl<T: Float> Network<T> {
             .map(move |id| self.get_neuron(*id).unwrap().previous_value())
     }
 
+    /// Returns the list of neuron IDs whose previous values represent the recurrent state of the
+    /// [`Network`] and are used by [`RecurrentJumper`] genes. See [`Neuron::previous_value`].
+    pub fn recurrent_state_ids(&self) -> &[NeuronId] {
+        &self.recurrent_state_ids
+    }
+
     /// Maps `f` over the recurrent state of the [`Network`], which are the values stored for use by
     /// [`RecurrentJumper`] genes. The first argument to `f` is the index of the state value being
     /// accessed.
